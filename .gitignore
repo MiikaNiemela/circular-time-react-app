@@ -1,0 +1,37 @@
+node_modules/
+.react-router/
+build/
+dist/
+# Environment files
+.env
+.env.*
+!.env.example
+.vscode/settings.json
+*storybook.log
+storybook-static
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Credentials and certificate material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Credential exports
+service-account*.json
+service_account*.json
+*service-account*.json
+*service_account*.json
+credential*.json
+credentials*.json
+*.credentials.json
+
+# User-level npm configuration can contain registry tokens
+.npmrc

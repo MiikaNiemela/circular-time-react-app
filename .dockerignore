@@ -1,0 +1,15 @@
+node_modules
+.git
+.react-router
+build
+dist
+.env
+storybook-static
+*.log
+
+# Exclude "build-time" ignore files.
+.dockerignore
+.gcloudignore
+
+# Exclude git history and configuration.
+.gitignore

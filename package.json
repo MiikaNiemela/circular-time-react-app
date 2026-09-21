@@ -1,0 +1,80 @@
+{
+  "name": "circular-time-react-app",
+  "description": "Application showing different timelines in intuitive circular patterns.",
+  "keywords": [],
+
+  "license": "ISC",
+  "private": true,
+  "homepage": "https://github.com/MiikaNiemela/circular-time-react-app#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MiikaNiemela/circular-time-react-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MiikaNiemela/circular-time-react-app/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "lint": "eslint app/ --max-warnings=0",
+    "lint:md": "markdownlint-cli2",
+    "format:check": "prettier --check app/",
+    "format": "prettier --write app/",
+    "test": "vitest",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "docker:build": "docker build -t circular-time-app .",
+    "docker:serve": "npm run docker:build && docker run --rm -p 8080:8080 circular-time-app",
+    "postinstall": "prisma generate"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@google-cloud/secret-manager": "^6.2.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@react-router/node": "^7.17.0",
+    "@react-router/serve": "^7.0.0",
+    "@vanilla-extract/css": "^1.20.1",
+    "@vanilla-extract/vite-plugin": "^5.2.2",
+    "isbot": "^5",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router": "^7.0.0"
+  },
+  "devDependencies": {
+    "@chromatic-com/storybook": "^5.2.1",
+    "@react-router/dev": "^7.0.0",
+    "@storybook/addon-a11y": "^10.4.4",
+    "@storybook/addon-docs": "^10.4.4",
+    "@storybook/addon-mcp": "^0.6.0",
+    "@storybook/addon-vitest": "^10.4.4",
+    "@storybook/react-vite": "^10.4.4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "@vitest/browser-playwright": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsdoc": "^63.0.6",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^29.1.1",
+    "markdownlint-cli2": "^0.22.1",
+    "playwright": "^1.60.0",
+    "prettier": "^3.8.4",
+    "prisma": "^7.8.0",
+    "storybook": "^10.4.4",
+    "typescript": "latest",
+    "typescript-eslint": "^8.61.1",
+    "vite": "latest",
+    "vitest": "latest"
+  }
+}

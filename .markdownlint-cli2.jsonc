@@ -1,0 +1,15 @@
+{
+  // globs: every markdown file in the repo is linted. Defined here (not as an
+  // unquoted CLI arg) so globstar matching is done by markdownlint-cli2 itself
+  // and reliably includes root-level files like README.md.
+  "globs": ["**/*.md"],
+  // ignores: directories that should not be linted
+  // node_modules: third-party code
+  // .react-router: generated route types
+  // build: compiled output
+  "ignores": [
+    "node_modules/**",
+    ".react-router/**",
+    "build/**"
+  ]
+}
