@@ -81,75 +81,29 @@ vanilla-extract provides type-safe, zero-runtime CSS, organised as a two-tier to
 
 ## Hosting
 
-The app runs as a Node.js SSR server (via `react-router-serve`) on **Google Cloud Run**.
+The application runs as a Node.js SSR server through `react-router-serve` in a container platform.
 
-- The container listens on `PORT=8080` (Cloud Run's expected default).
-- A multi-stage Dockerfile (`deps → builder → runner`) keeps the production image lean: dev tooling and the Vite build pipeline are discarded; only the compiled `build/` output and production `node_modules` are copied into the final stage.
-- The runner stage uses a non-root system user (`reactrouter`) for least-privilege execution.
-- `NODE_ENV=production` is baked in; secrets and OAuth credentials are injected at deploy time via Cloud Run environment variables or Secret Manager — never stored in the image.
-- Because milestone 3 (Google Calendar / Outlook OAuth) requires a stable redirect URI, the Cloud Run service URL must be registered in each OAuth app's allowed redirect list before auth is wired.
+- The container listens on `PORT=8080`.
+- A multi-stage Dockerfile (`deps → builder → runner`) retains the compiled `build/` output and production dependencies in the final image.
+- The runner stage uses a non-root system user (`reactrouter`).
+- Runtime credentials and connection settings are injected by the deployment environment. They are never stored in the image or source repository.
+- OAuth providers require an environment-specific stable redirect URI to be registered before sign-in is enabled.
 
-### Persistence (Postgres)
+### Persistence
 
-User records and cached calendar events live in a PostgreSQL database, reached through Prisma (with the `@prisma/adapter-pg` driver). The connection string is injected at deploy time via the `DATABASE_URL` environment variable — never baked into the image — and the server reuses a single client across requests. Business logic talks to the database only through repository interfaces (`userRepository`, `serverEventCache`), so the concrete driver stays swappable. `SESSION_SECRET` signs the session cookie and must likewise be set in production.
+User records and cached calendar events live in a PostgreSQL database through Prisma and `@prisma/adapter-pg`. The deployment environment supplies `DATABASE_URL` and `SESSION_SECRET`; neither value is baked into an image. Business logic reaches the database only through repository interfaces, so the concrete driver remains replaceable.
 
-### Google OAuth client secret (Secret Manager)
+### Google OAuth
 
-Google "Web application" OAuth clients are confidential: the token exchange requires a `client_secret` even when PKCE is used. The browser must never hold it, so the exchange is proxied server-side through the `/auth/google/token` resource route, which fetches the secret from **GCP Secret Manager** at runtime (`app/data/providers/google/secretManager.server.ts`) using the Cloud Run service account's own identity — no API key or env var holds the secret value.
+Google's web OAuth client uses a confidential client secret for its server-side token exchange. The browser never receives that secret. The `/auth/google/token` route retrieves it through the runtime environment's secret-management integration, and caches it in-process for each container instance.
 
-One-time operator setup (per environment):
+The deployment environment supplies the public Google client ID separately. The public client ID is included in the browser build; the client secret remains server-side.
 
-1. Store the OAuth client secret in Secret Manager under the secret id `OAUTH_CLIENT_SECRET` in project `683033464752`:
+### Outlook OAuth
 
-   ```bash
-   printf '%s' "<client-secret>" | \
-     gcloud secrets create OAUTH_CLIENT_SECRET --data-file=- --project=dev-circular-time
-   # to rotate later: gcloud secrets versions add OAUTH_CLIENT_SECRET --data-file=-
-   ```
+Microsoft's identity platform supports a public SPA client. The browser performs the authorization-code and PKCE token exchange directly, with no client secret.
 
-2. Grant the Cloud Run runtime service account permission to read it:
-
-   ```bash
-   gcloud secrets add-iam-policy-binding OAUTH_CLIENT_SECRET \
-     --member="serviceAccount:<cloud-run-runtime-sa>" \
-     --role="roles/secretmanager.secretAccessor" \
-     --project=dev-circular-time
-   ```
-
-The module reads `projects/683033464752/secrets/OAUTH_CLIENT_SECRET/versions/latest` and caches the value in-process, so each container makes at most one Secret Manager RPC per cold start. The deploy workflow no longer passes a `GOOGLE_CLIENT_SECRET` env var — only the public `GOOGLE_CLIENT_ID`.
-
-### Outlook OAuth (Azure app registration)
-
-Microsoft's identity platform supports true public SPA clients — the browser exchanges the authorization code for tokens directly, with no server secret involved. **No proxy route and no Secret Manager entry are needed for Outlook.**
-
-The critical requirement is that the redirect URI is registered under the **Single-page application** platform in Azure (not "Web"). Microsoft only allows the browser-based, secretless PKCE token exchange — with the required CORS headers — for SPA-platform redirect URIs. Registering under "Web" would reject the browser's token request and demand a `client_secret`, undermining the whole point of public-client PKCE.
-
-One-time operator setup (per environment):
-
-1. In the [Microsoft Entra admin center](https://entra.microsoft.com), go to **App registrations → New registration**.
-   - Name: anything (e.g. `circular-time-dev`)
-   - Supported account types: *Accounts in any organizational directory and personal Microsoft accounts* (the `common` tenant, already used in `auth.ts`)
-   - Skip the redirect URI here — add it in the next step.
-
-2. Under **Authentication → Add a platform → Single-page application**, add the redirect URI:
-
-   ```text
-   https://dev.rjpnt.com/auth/outlook/callback
-   ```
-
-   Add `http://localhost:5173/auth/outlook/callback` for local development if needed.
-
-3. Under **API permissions → Add a permission → Microsoft Graph → Delegated**, add:
-   - `Calendars.Read`
-   - `offline_access`
-   - `openid`
-   - `profile`
-
-   These match `CALENDAR_SCOPE` in `app/data/providers/outlook/auth.ts`. Grant admin consent if your tenant requires it.
-
-4. Copy the **Application (client) ID** from the app registration's Overview page and store it as the `VITE_OUTLOOK_CLIENT_ID` GitHub Actions secret. The deploy workflow already injects it as a Vite build-time variable; `isOutlookConfigured()` gates the Settings UI on it, so the "Connect Outlook" entry point appears automatically once the secret is set.
-
-No `VITE_OUTLOOK_CLIENT_SECRET` secret is needed or used — Outlook's public-client PKCE requires only the client ID.
+The Outlook app registration must define the environment's callback under the Single-page application platform and grant the delegated calendar, offline-access, OpenID, and profile permissions used by the application. The public Outlook client ID is supplied as build configuration.
 
 ## Testing strategy
 

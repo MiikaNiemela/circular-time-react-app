@@ -1,0 +1,140 @@
+name: Continuous integration and development deployment
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint Markdown
+        run: npm run lint:md
+
+      - name: Unit tests
+        run: npx vitest run --project unit
+
+      - name: Storybook component tests
+        run: npx vitest run --project storybook
+
+      - name: Build
+        run: npm run build
+
+  deploy-development:
+    name: Deploy development
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+    concurrency:
+      group: development-deployment
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify deployment configuration
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_OUTLOOK_CLIENT_ID: ${{ secrets.VITE_OUTLOOK_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET_RESOURCE: ${{ secrets.GOOGLE_CLIENT_SECRET_RESOURCE }}
+          DEV_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          DEV_GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEV_GCP_DEPLOY_SERVICE_ACCOUNT }}
+          DEV_ARTIFACT_REGISTRY_HOST: ${{ secrets.DEV_ARTIFACT_REGISTRY_HOST }}
+          DEV_ARTIFACT_IMAGE_REPOSITORY: ${{ secrets.DEV_ARTIFACT_IMAGE_REPOSITORY }}
+          DEV_CLOUD_RUN_SERVICE: ${{ secrets.DEV_CLOUD_RUN_SERVICE }}
+          DEV_CLOUD_RUN_REGION: ${{ secrets.DEV_CLOUD_RUN_REGION }}
+        run: |
+          test -n "$VITE_GOOGLE_CLIENT_ID"
+          test -n "$VITE_OUTLOOK_CLIENT_ID"
+          test -n "$GOOGLE_CLIENT_SECRET_RESOURCE"
+          test -n "$DEV_GCP_WORKLOAD_IDENTITY_PROVIDER"
+          test -n "$DEV_GCP_DEPLOY_SERVICE_ACCOUNT"
+          test -n "$DEV_ARTIFACT_REGISTRY_HOST"
+          test -n "$DEV_ARTIFACT_IMAGE_REPOSITORY"
+          test -n "$DEV_CLOUD_RUN_SERVICE"
+          test -n "$DEV_CLOUD_RUN_REGION"
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEV_GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker authentication
+        env:
+          DEV_ARTIFACT_REGISTRY_HOST: ${{ secrets.DEV_ARTIFACT_REGISTRY_HOST }}
+        run: gcloud auth configure-docker "$DEV_ARTIFACT_REGISTRY_HOST" --quiet
+
+      - id: image
+        name: Build and push immutable image
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_OUTLOOK_CLIENT_ID: ${{ secrets.VITE_OUTLOOK_CLIENT_ID }}
+          DEV_ARTIFACT_IMAGE_REPOSITORY: ${{ secrets.DEV_ARTIFACT_IMAGE_REPOSITORY }}
+        run: |
+          IMAGE_URI="${DEV_ARTIFACT_IMAGE_REPOSITORY}:${GITHUB_SHA}"
+          docker build \
+            --build-arg VITE_GOOGLE_CLIENT_ID="$VITE_GOOGLE_CLIENT_ID" \
+            --build-arg VITE_OUTLOOK_CLIENT_ID="$VITE_OUTLOOK_CLIENT_ID" \
+            --tag "$IMAGE_URI" \
+            .
+          docker push "$IMAGE_URI"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy immutable image to development
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ secrets.DEV_CLOUD_RUN_SERVICE }}
+          region: ${{ secrets.DEV_CLOUD_RUN_REGION }}
+          image: ${{ steps.image.outputs.uri }}
+          env_vars: |-
+            GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET_RESOURCE=${{ secrets.GOOGLE_CLIENT_SECRET_RESOURCE }}

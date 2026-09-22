@@ -11,6 +11,7 @@ Reference documents describe the application as it exists today and change with 
 | [features.md](features.md) | Know what the app does and its feature status. |
 | [architecture.md](architecture.md) | Understand the web app's layers, components, and data flow. |
 | [runtime-stack.md](runtime-stack.md) | See which code runs in the browser, on the server, and against external services. |
+| [deployment.md](deployment.md) | Understand the public CI and development deployment flow. |
 | [decisions/](decisions/) | Read the recorded design decisions behind the public component API. |
 
 ## Context

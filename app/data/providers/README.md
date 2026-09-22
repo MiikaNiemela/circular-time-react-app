@@ -20,8 +20,9 @@ server-side. The browser never sees the secret.
 Credentials:
 
 - `VITE_GOOGLE_CLIENT_ID` — public client ID, build-time (browser).
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — server-side runtime env on
-  Cloud Run, supplied from GitHub secrets by the deploy workflow.
+- `GOOGLE_CLIENT_ID` — server-side runtime configuration.
+- `GOOGLE_CLIENT_SECRET_RESOURCE` — runtime Secret Manager resource name. The
+  deployment environment resolves the secret; the browser never receives it.
 
 Module layout (split so the whole flow is unit-testable without a browser or
 live Google — network calls take an injectable `fetch`):

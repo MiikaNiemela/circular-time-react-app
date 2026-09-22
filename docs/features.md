@@ -64,7 +64,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Feature | Status | Origin | Notes |
 |---|---|---|---|
 | Storybook for every component | ✅ | **new** | Stories for `Circle`, `MultiCircle`, `SegmentedControl`, `PeriodNavigator`, `DarkModeToggle`, `ThemeProvider`. |
-| Unit tests per component/module | ✅ | planned | 348 unit tests across timeline math, data layer, providers, hooks, and components. |
+| Unit tests per component/module | ✅ | planned | 349 unit tests across timeline math, data layer, providers, hooks, and components. |
 | Linting / formatting in CI | ✅ | carried over | CI enforces `typecheck`, `lint`, `format:check`, and `lint:md`. |
 | Two-tier design tokens | ✅ | **new** | Tier-1 primitives feed tier-2 semantic tokens; components reference semantic roles only (Milestone 7.1). |
 | Documented, stable component API | ✅ | planned | `Slice` / `CircleProps` / `MultiCircleProps` reviewed and JSDoc'd; single `index.ts` entry point; coupling test enforces extraction-readiness. |
