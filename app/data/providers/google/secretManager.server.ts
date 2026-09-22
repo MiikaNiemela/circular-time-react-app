@@ -1,6 +1,6 @@
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 
-const SECRET_NAME = "projects/683033464752/secrets/OAUTH_CLIENT_SECRET/versions/latest";
+const secretName = process.env.GOOGLE_CLIENT_SECRET_RESOURCE;
 
 let cached: string | null = null;
 
@@ -11,9 +11,12 @@ let cached: string | null = null;
  */
 export async function getGoogleClientSecret(): Promise<string> {
   if (cached) return cached;
+  if (!secretName) {
+    throw new Error("GOOGLE_CLIENT_SECRET_RESOURCE is not configured");
+  }
   console.debug("Fetching Google client secret from Secret Manager...");
   const client = new SecretManagerServiceClient();
-  const [version] = await client.accessSecretVersion({ name: SECRET_NAME });
+  const [version] = await client.accessSecretVersion({ name: secretName });
   const payload = version.payload?.data;
   if (!payload) {
     console.error("Secret payload is empty");
