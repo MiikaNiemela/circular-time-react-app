@@ -15,6 +15,13 @@ export const IDENTITY_SCOPE = "openid profile email User.Read";
 /** Calendar.Read gives access to events in the user's primary mailbox. */
 export const CALENDAR_SCOPE = "Calendars.Read offline_access openid profile";
 
+/**
+ * Calendar access plus the identity claims needed to bind the connection to the
+ * signed-in account. Kept de-duplicated because OAuth scope is a set.
+ */
+export const CALENDAR_CONNECTION_SCOPE =
+  "openid profile email User.Read Calendars.Read offline_access";
+
 const AUTH_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 const TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 
@@ -87,7 +94,6 @@ export async function exchangeCodeForTokens({
     grant_type: "authorization_code",
     code,
     code_verifier: codeVerifier,
-    scope: CALENDAR_SCOPE,
   });
 
   const res = await fetchFn(TOKEN_ENDPOINT, {

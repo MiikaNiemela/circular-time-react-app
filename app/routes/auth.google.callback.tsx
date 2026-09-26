@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { completeGoogleAuth } from "../data/providers/google";
+import { completeGoogleAuth, GoogleTokenStore } from "../data/providers/google";
 import { GOOGLE_CLIENT_ID, googleRedirectUri } from "../data/providers/google/config";
 import { consumePostAuthRedirect } from "../lib/authState";
 
@@ -45,20 +45,24 @@ export default function GoogleCallback() {
       redirectUri: googleRedirectUri(window.location.origin),
       code,
       state,
-      persistTokens: flow.intent !== "sign-in",
+      persistTokens: false,
     })
       .then(async (tokens) => {
-        const response = await fetch("/auth/session", {
+        const endpoint = flow.intent === "sign-in" ? "/auth/session" : "/auth/calendar-connection";
+        const body =
+          flow.intent === "sign-in"
+            ? { intent: flow.intent, provider: "google", accessToken: tokens.accessToken }
+            : { provider: "google", accessToken: tokens.accessToken };
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            intent: flow.intent,
-            provider: "google",
-            accessToken: tokens.accessToken,
-          }),
+          body: JSON.stringify(body),
         });
         if (!response.ok) {
           throw new Error("Unable to establish the application session.");
+        }
+        if (flow.intent === "connect-calendar") {
+          new GoogleTokenStore().set(tokens);
         }
         navigate(flow.returnTo, { replace: true });
       })

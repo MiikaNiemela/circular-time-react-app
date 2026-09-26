@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { startGoogleSignIn, startOutlookSignIn } from "./providerAuth";
+import {
+  startGoogleCalendarConnection,
+  startGoogleSignIn,
+  startOutlookCalendarConnection,
+  startOutlookSignIn,
+} from "./providerAuth";
 
 const mocks = vi.hoisted(() => ({
   isGoogleConfigured: vi.fn(() => true),
@@ -113,5 +118,51 @@ describe("startOutlookSignIn", () => {
     expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
       expect.objectContaining({ scope: "openid profile email User.Read" })
     );
+  });
+});
+
+describe("startGoogleCalendarConnection", () => {
+  it("records a calendar-connection intent and requests the calendar scope", async () => {
+    await startGoogleCalendarConnection();
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "connect-calendar",
+      returnTo: "/settings",
+    });
+    expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      })
+    );
+  });
+
+  it("returns null without recording state when Google is not configured", async () => {
+    mocks.isGoogleConfigured.mockReturnValue(false);
+
+    await expect(startGoogleCalendarConnection()).resolves.toBeNull();
+    expect(mocks.setPostAuthRedirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("startOutlookCalendarConnection", () => {
+  it("records a calendar-connection intent and requests the calendar scope", async () => {
+    await startOutlookCalendarConnection();
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "connect-calendar",
+      returnTo: "/settings",
+    });
+    expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "openid profile email User.Read Calendars.Read offline_access",
+      })
+    );
+  });
+
+  it("returns null without recording state when Outlook is not configured", async () => {
+    mocks.isOutlookConfigured.mockReturnValue(false);
+
+    await expect(startOutlookCalendarConnection()).resolves.toBeNull();
+    expect(mocks.setPostAuthRedirect).not.toHaveBeenCalled();
   });
 });

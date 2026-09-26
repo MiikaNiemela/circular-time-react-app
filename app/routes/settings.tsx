@@ -1,18 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { DarkModeToggle } from "../components/DarkModeToggle";
-import { startGoogleAuth, GoogleTokenStore } from "../data/providers/google";
-import {
-  GOOGLE_CLIENT_ID,
-  googleRedirectUri,
-  isGoogleConfigured,
-} from "../data/providers/google/config";
-import { startOutlookAuth, OutlookTokenStore } from "../data/providers/outlook";
-import {
-  OUTLOOK_CLIENT_ID,
-  outlookRedirectUri,
-  isOutlookConfigured,
-} from "../data/providers/outlook/config";
+import { startGoogleCalendarConnection, startOutlookCalendarConnection } from "../lib/providerAuth";
+import { GoogleTokenStore } from "../data/providers/google";
+import { OutlookTokenStore } from "../data/providers/outlook";
 import { CalendarVisibilityStore, CalendarCache } from "../data";
 import {
   page,
@@ -100,31 +91,20 @@ export default function Settings() {
     // a previous disconnect.
     new CalendarVisibilityStore().setVisible(id, true);
     if (id === "google") {
-      console.debug("calendar visibility change - starting Google OAuth flow...");
-      if (!isGoogleConfigured()) {
+      const url = await startGoogleCalendarConnection();
+      if (!url) {
         alert("Google Calendar is not configured for this build.");
         return;
       }
-      // Redirect into Google's consent screen; the callback finishes the flow.
-      const url = await startGoogleAuth({
-        clientId: GOOGLE_CLIENT_ID,
-        redirectUri: googleRedirectUri(window.location.origin),
-      });
-      console.debug("redirecting to Google OAuth consent screen...");
       window.location.assign(url);
       return;
     }
     if (id === "outlook") {
-      console.debug("calendar visibility change - starting Outlook OAuth flow...");
-      if (!isOutlookConfigured()) {
+      const url = await startOutlookCalendarConnection();
+      if (!url) {
         alert("Outlook Calendar is not configured for this build.");
         return;
       }
-      const url = await startOutlookAuth({
-        clientId: OUTLOOK_CLIENT_ID,
-        redirectUri: outlookRedirectUri(window.location.origin),
-      });
-      console.debug("redirecting to Outlook OAuth consent screen...");
       window.location.assign(url);
       return;
     }

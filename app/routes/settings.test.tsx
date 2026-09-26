@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { render, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+
+const providerAuthMocks = vi.hoisted(() => ({
+  startGoogleCalendarConnection: vi.fn(),
+  startOutlookCalendarConnection: vi.fn(),
+}));
+
+vi.mock("../lib/providerAuth", () => providerAuthMocks);
+
 import Settings from "./settings";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { GoogleTokenStore } from "../data/providers/google";
@@ -24,7 +32,16 @@ function connectGoogle() {
 }
 
 describe("Settings route", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    providerAuthMocks.startGoogleCalendarConnection.mockResolvedValue(
+      "https://accounts.google.com/oauth"
+    );
+    providerAuthMocks.startOutlookCalendarConnection.mockResolvedValue(
+      "https://login.microsoftonline.com/oauth"
+    );
+  });
 
   it("renders a calendar list with three providers", () => {
     const { getByText } = renderSettings();
@@ -53,7 +70,25 @@ describe("Settings route", () => {
     alertSpy.mockRestore();
   });
 
-  it("a connected calendar shows Disconnect and a visibility toggle", () => {
+  it("starts an explicit Google calendar-connection flow", async () => {
+    const { getAllByRole } = renderSettings();
+    fireEvent.click(getAllByRole("button", { name: "Connect" })[0]);
+
+    await waitFor(() =>
+      expect(providerAuthMocks.startGoogleCalendarConnection).toHaveBeenCalledOnce()
+    );
+  });
+
+  it("starts an explicit Outlook calendar-connection flow", async () => {
+    const { getAllByRole } = renderSettings();
+    fireEvent.click(getAllByRole("button", { name: "Connect" })[1]);
+
+    await waitFor(() =>
+      expect(providerAuthMocks.startOutlookCalendarConnection).toHaveBeenCalledOnce()
+    );
+  });
+
+  it("a connected calendar shows Disconnect and a visibility toggle", async () => {
     connectGoogle();
     const { getByText, getByRole, getByLabelText } = renderSettings();
     expect(getByText("Connected")).toBeTruthy();

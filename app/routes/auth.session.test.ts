@@ -39,6 +39,7 @@ function makeRequest(body: unknown): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getSession.mockResolvedValue(mocks.mockSession);
+  mocks.mockSession.get.mockReturnValue(undefined);
   mocks.commitSession.mockResolvedValue("__session=signed; HttpOnly");
   mocks.fetchGoogleUserId.mockResolvedValue("google-sub-123");
   mocks.fetchOutlookUserId.mockResolvedValue("outlook-id-abc");
@@ -52,13 +53,13 @@ describe("POST /auth/session", () => {
       headers: { "Content-Type": "application/json" },
       body: "not-json",
     });
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({ request: req, params: {}, context: {} });
     expect(res.status).toBe(400);
   });
 
   it("returns 400 when provider is missing", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ accessToken: "tok" }),
       params: {},
@@ -68,7 +69,7 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 400 when accessToken is missing", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ provider: "google" }),
       params: {},
@@ -78,7 +79,7 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 400 when OAuth intent is missing", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ provider: "google", accessToken: "tok" }),
       params: {},
@@ -89,7 +90,7 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 400 for an unknown provider", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "apple", accessToken: "tok" }),
       params: {},
@@ -100,7 +101,7 @@ describe("POST /auth/session", () => {
 
   it("returns 401 when Google identity verification fails", async () => {
     mocks.fetchGoogleUserId.mockRejectedValue(new Error("Google userinfo failed: 401"));
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "bad" }),
       params: {},
@@ -111,7 +112,7 @@ describe("POST /auth/session", () => {
 
   it("returns 401 when Outlook identity verification fails", async () => {
     mocks.fetchOutlookUserId.mockRejectedValue(new Error("Outlook /me failed: 401"));
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "outlook", accessToken: "bad" }),
       params: {},
@@ -122,7 +123,7 @@ describe("POST /auth/session", () => {
 
   it("returns 503 when the user repository throws", async () => {
     mocks.signInWithProvider.mockRejectedValue(new Error("DB connection lost"));
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "tok" }),
       params: {},
@@ -132,7 +133,7 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 200 with Set-Cookie and stores the stable user ID for a valid Google token", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "tok" }),
       params: {},
@@ -145,7 +146,7 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 200 with Set-Cookie and stores the stable user ID for a valid Outlook token", async () => {
-    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
     const res = await action({
       request: makeRequest({ intent: "sign-in", provider: "outlook", accessToken: "tok" }),
       params: {},

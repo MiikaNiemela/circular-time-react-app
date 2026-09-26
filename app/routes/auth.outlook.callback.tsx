@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { completeOutlookAuth } from "../data/providers/outlook";
+import { completeOutlookAuth, OutlookTokenStore } from "../data/providers/outlook";
 import { OUTLOOK_CLIENT_ID, outlookRedirectUri } from "../data/providers/outlook/config";
 import { consumePostAuthRedirect } from "../lib/authState";
 
@@ -35,20 +35,24 @@ export default function OutlookCallback() {
       redirectUri: outlookRedirectUri(window.location.origin),
       code,
       state,
-      persistTokens: flow.intent !== "sign-in",
+      persistTokens: false,
     })
       .then(async (tokens) => {
-        const response = await fetch("/auth/session", {
+        const endpoint = flow.intent === "sign-in" ? "/auth/session" : "/auth/calendar-connection";
+        const body =
+          flow.intent === "sign-in"
+            ? { intent: flow.intent, provider: "outlook", accessToken: tokens.accessToken }
+            : { provider: "outlook", accessToken: tokens.accessToken };
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            intent: flow.intent,
-            provider: "outlook",
-            accessToken: tokens.accessToken,
-          }),
+          body: JSON.stringify(body),
         });
         if (!response.ok) {
           throw new Error("Unable to establish the application session.");
+        }
+        if (flow.intent === "connect-calendar") {
+          new OutlookTokenStore().set(tokens);
         }
         navigate(flow.returnTo, { replace: true });
       })

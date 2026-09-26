@@ -7,14 +7,20 @@
  */
 
 import { startGoogleAuth } from "../data/providers/google";
-import { IDENTITY_SCOPE as GOOGLE_IDENTITY_SCOPE } from "../data/providers/google/auth";
+import {
+  CALENDAR_CONNECTION_SCOPE as GOOGLE_CALENDAR_CONNECTION_SCOPE,
+  IDENTITY_SCOPE as GOOGLE_IDENTITY_SCOPE,
+} from "../data/providers/google/auth";
 import {
   GOOGLE_CLIENT_ID,
   googleRedirectUri,
   isGoogleConfigured,
 } from "../data/providers/google/config";
 import { startOutlookAuth } from "../data/providers/outlook";
-import { IDENTITY_SCOPE as OUTLOOK_IDENTITY_SCOPE } from "../data/providers/outlook/auth";
+import {
+  CALENDAR_CONNECTION_SCOPE as OUTLOOK_CALENDAR_CONNECTION_SCOPE,
+  IDENTITY_SCOPE as OUTLOOK_IDENTITY_SCOPE,
+} from "../data/providers/outlook/auth";
 import {
   OUTLOOK_CLIENT_ID,
   isOutlookConfigured,
@@ -57,5 +63,33 @@ export async function startOutlookSignIn({ returnTo = "/" }: StartSignInOptions 
     clientId: OUTLOOK_CLIENT_ID,
     redirectUri: outlookRedirectUri(window.location.origin),
     scope: OUTLOOK_IDENTITY_SCOPE,
+  });
+}
+
+/**
+ * Starts an explicit Google calendar-connection flow for the signed-in account.
+ * The requested scopes include identity claims, because the server must verify
+ * the provider identity before it marks the calendar as connected.
+ */
+export async function startGoogleCalendarConnection(): Promise<string | null> {
+  if (!isGoogleConfigured()) return null;
+  setPostAuthRedirect({ intent: "connect-calendar", returnTo: "/settings" });
+  return startGoogleAuth({
+    clientId: GOOGLE_CLIENT_ID,
+    redirectUri: googleRedirectUri(window.location.origin),
+    scope: GOOGLE_CALENDAR_CONNECTION_SCOPE,
+  });
+}
+
+/**
+ * Starts an explicit Outlook calendar-connection flow for the signed-in account.
+ */
+export async function startOutlookCalendarConnection(): Promise<string | null> {
+  if (!isOutlookConfigured()) return null;
+  setPostAuthRedirect({ intent: "connect-calendar", returnTo: "/settings" });
+  return startOutlookAuth({
+    clientId: OUTLOOK_CLIENT_ID,
+    redirectUri: outlookRedirectUri(window.location.origin),
+    scope: OUTLOOK_CALENDAR_CONNECTION_SCOPE,
   });
 }

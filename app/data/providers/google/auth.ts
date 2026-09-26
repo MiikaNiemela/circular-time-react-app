@@ -19,6 +19,9 @@ export const IDENTITY_SCOPE = "openid email profile";
 /** Read-only access to the user's calendar events. */
 export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 
+/** Calendar access plus the identity claims needed to bind the connection to the signed-in account. */
+export const CALENDAR_CONNECTION_SCOPE = `${IDENTITY_SCOPE} ${CALENDAR_SCOPE}`;
+
 export interface AuthUrlParams {
   clientId: string;
   redirectUri: string;

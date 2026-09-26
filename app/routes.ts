@@ -8,5 +8,6 @@ export default [
   route("auth/google/token", "routes/auth.google.token.tsx"),
   route("auth/outlook/callback", "routes/auth.outlook.callback.tsx"),
   route("auth/session", "routes/auth.session.ts"),
+  route("auth/calendar-connection", "routes/auth.calendar-connection.ts"),
   route("auth/sign-out", "routes/auth.sign-out.ts"),
 ] satisfies RouteConfig;
