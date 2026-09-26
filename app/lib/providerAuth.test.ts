@@ -56,12 +56,25 @@ describe("startGoogleSignIn", () => {
 
   it("stores the returnTo path before starting OAuth", async () => {
     await startGoogleSignIn({ returnTo: "/timeline" });
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/timeline");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/timeline",
+    });
   });
 
   it("defaults returnTo to '/' when not provided", async () => {
     await startGoogleSignIn();
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/",
+    });
+  });
+  it("uses identity-only scopes for sign-in", async () => {
+    await startGoogleSignIn();
+
+    expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "openid email profile" })
+    );
   });
 });
 
@@ -80,11 +93,25 @@ describe("startOutlookSignIn", () => {
 
   it("stores the returnTo path before starting OAuth", async () => {
     await startOutlookSignIn({ returnTo: "/timeline" });
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/timeline");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/timeline",
+    });
   });
 
   it("defaults returnTo to '/' when not provided", async () => {
     await startOutlookSignIn();
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/",
+    });
+  });
+
+  it("uses identity-only scopes for sign-in", async () => {
+    await startOutlookSignIn();
+
+    expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "openid profile email User.Read" })
+    );
   });
 });

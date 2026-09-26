@@ -1,56 +1,44 @@
-/**
- * Client-only auth gate: the user is considered authenticated when at least
- * one calendar provider has tokens in localStorage. Milestone 5.2 will replace
- * this with a server-side session check.
- *
- * Post-auth redirect: callers that start OAuth from the sign-in route store a
- * return URL in sessionStorage before redirecting; the OAuth callbacks read it
- * via consumePostAuthRedirect to land back at the original destination instead
- * of the default /settings page.
- */
+/** Declares whether an OAuth completion signs in or connects a calendar. */
+export type OAuthIntent = "sign-in" | "connect-calendar";
 
-import { useSyncExternalStore } from "react";
-import { GoogleTokenStore } from "../data/providers/google";
-import { OutlookTokenStore } from "../data/providers/outlook";
+/** Holds one browser-local OAuth intent and its safe return destination. */
+export interface PendingOAuthFlow {
+  intent: OAuthIntent;
+  returnTo: string;
+}
 
 const POST_AUTH_KEY = "circular-time-post-auth-redirect";
 
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  return () => window.removeEventListener("storage", onChange);
-}
-
-function isAuthenticatedSnapshot(): boolean {
-  return new GoogleTokenStore().get() !== null || new OutlookTokenStore().get() !== null;
-}
-
-// The server has no localStorage; all visitors are unauthenticated from the
-// server's perspective — the client resolves the real value after hydration.
-const isAuthenticatedServerSnapshot = (): boolean => false;
-
-/**
- * True when at least one calendar provider has tokens in localStorage;
- * false during SSR and the first client render until hydration resolves it.
- */
-export function useIsAuthenticated(): boolean {
-  return useSyncExternalStore(subscribe, isAuthenticatedSnapshot, isAuthenticatedServerSnapshot);
+function isPendingOAuthFlow(value: unknown): value is PendingOAuthFlow {
+  if (!value || typeof value !== "object") return false;
+  const flow = value as Record<string, unknown>;
+  return (
+    (flow.intent === "sign-in" || flow.intent === "connect-calendar") &&
+    typeof flow.returnTo === "string"
+  );
 }
 
 /**
- * Stores the URL to navigate to after a successful OAuth sign-in.
- * Call this before starting OAuth from the sign-in gate so the callback
- * knows where to send the user instead of the default /settings destination.
+ * Stores the purpose and local destination for one OAuth round trip.
+ * The callback consumes the state before it creates a server session or links a
+ * calendar, so a completed authorization response cannot be replayed locally.
  */
-export function setPostAuthRedirect(returnTo: string): void {
-  sessionStorage.setItem(POST_AUTH_KEY, returnTo);
+export function setPostAuthRedirect(flow: PendingOAuthFlow): void {
+  sessionStorage.setItem(POST_AUTH_KEY, JSON.stringify(flow));
 }
 
 /**
- * Reads and removes the stored post-auth return URL.
- * Returns null when OAuth was started from Settings (no redirect was stored).
+ * Reads and removes the pending OAuth flow. Malformed state is discarded.
  */
-export function consumePostAuthRedirect(): string | null {
-  const url = sessionStorage.getItem(POST_AUTH_KEY);
-  if (url) sessionStorage.removeItem(POST_AUTH_KEY);
-  return url;
+export function consumePostAuthRedirect(): PendingOAuthFlow | null {
+  const raw = sessionStorage.getItem(POST_AUTH_KEY);
+  if (!raw) return null;
+
+  sessionStorage.removeItem(POST_AUTH_KEY);
+  try {
+    const flow: unknown = JSON.parse(raw);
+    return isPendingOAuthFlow(flow) ? flow : null;
+  } catch {
+    return null;
+  }
 }

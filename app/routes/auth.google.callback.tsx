@@ -38,20 +38,29 @@ export default function GoogleCallback() {
       return;
     }
 
+    const flow = consumePostAuthRedirect() ?? { intent: "connect-calendar", returnTo: "/settings" };
+
     completeGoogleAuth({
       clientId: GOOGLE_CLIENT_ID,
       redirectUri: googleRedirectUri(window.location.origin),
       code,
       state,
+      persistTokens: flow.intent !== "sign-in",
     })
       .then(async (tokens) => {
-        // Non-blocking: localStorage auth remains active if session creation fails.
-        await fetch("/auth/session", {
+        const response = await fetch("/auth/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: "google", accessToken: tokens.accessToken }),
-        }).catch(console.error);
-        navigate(consumePostAuthRedirect() ?? "/settings", { replace: true });
+          body: JSON.stringify({
+            intent: flow.intent,
+            provider: "google",
+            accessToken: tokens.accessToken,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error("Unable to establish the application session.");
+        }
+        navigate(flow.returnTo, { replace: true });
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Sign-in failed."));
   }, [params, navigate]);

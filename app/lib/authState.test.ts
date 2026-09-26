@@ -1,65 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { renderHook } from "@testing-library/react";
-import { useIsAuthenticated, setPostAuthRedirect, consumePostAuthRedirect } from "./authState";
+import { setPostAuthRedirect, consumePostAuthRedirect } from "./authState";
 
-const GOOGLE_KEY = "circular-time-google-tokens";
-const OUTLOOK_KEY = "circular-time-outlook-tokens";
-
-function makeTokens() {
-  return JSON.stringify({ accessToken: "tok", expiresAt: Date.now() + 3_600_000 });
-}
+const FLOW_KEY = "circular-time-post-auth-redirect";
 
 beforeEach(() => {
-  localStorage.clear();
   sessionStorage.clear();
 });
 
 afterEach(() => {
-  localStorage.clear();
   sessionStorage.clear();
 });
 
-describe("useIsAuthenticated", () => {
-  it("returns false when localStorage is empty", () => {
-    const { result } = renderHook(() => useIsAuthenticated());
-    expect(result.current).toBe(false);
+describe("OAuth flow state", () => {
+  it("records an identity-only sign-in flow and consumes it once", () => {
+    const flow = { intent: "sign-in" as const, returnTo: "/" };
+
+    setPostAuthRedirect(flow);
+
+    expect(sessionStorage.getItem(FLOW_KEY)).toBe(JSON.stringify(flow));
+    expect(consumePostAuthRedirect()).toEqual(flow);
+    expect(sessionStorage.getItem(FLOW_KEY)).toBeNull();
   });
 
-  it("returns true when Google tokens are present", () => {
-    localStorage.setItem(GOOGLE_KEY, makeTokens());
-    const { result } = renderHook(() => useIsAuthenticated());
-    expect(result.current).toBe(true);
-  });
-
-  it("returns true when Outlook tokens are present", () => {
-    localStorage.setItem(OUTLOOK_KEY, makeTokens());
-    const { result } = renderHook(() => useIsAuthenticated());
-    expect(result.current).toBe(true);
-  });
-
-  it("returns true when both providers have tokens", () => {
-    localStorage.setItem(GOOGLE_KEY, makeTokens());
-    localStorage.setItem(OUTLOOK_KEY, makeTokens());
-    const { result } = renderHook(() => useIsAuthenticated());
-    expect(result.current).toBe(true);
-  });
-});
-
-describe("setPostAuthRedirect / consumePostAuthRedirect", () => {
-  it("stores a URL and consumePostAuthRedirect reads and clears it", () => {
-    setPostAuthRedirect("/");
-    expect(sessionStorage.getItem("circular-time-post-auth-redirect")).toBe("/");
-    expect(consumePostAuthRedirect()).toBe("/");
-    expect(sessionStorage.getItem("circular-time-post-auth-redirect")).toBeNull();
-  });
-
-  it("consumePostAuthRedirect returns null when no redirect was stored", () => {
+  it("returns null when no OAuth flow is pending", () => {
     expect(consumePostAuthRedirect()).toBeNull();
   });
 
-  it("each call to consumePostAuthRedirect returns null after the first read", () => {
-    setPostAuthRedirect("/settings");
-    consumePostAuthRedirect();
+  it("rejects malformed pending OAuth flow state", () => {
+    sessionStorage.setItem(FLOW_KEY, "not-json");
+
     expect(consumePostAuthRedirect()).toBeNull();
+    expect(sessionStorage.getItem(FLOW_KEY)).toBeNull();
   });
 });

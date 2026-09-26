@@ -1,6 +1,5 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router";
-import { useIsAuthenticated } from "../lib/authState";
+import type { Route } from "./+types/sign-in";
+import { redirect } from "react-router";
 import { startGoogleSignIn, startOutlookSignIn } from "../lib/providerAuth";
 import { page, card, heading, subtitle, buttons, providerButton } from "./sign-in.css";
 
@@ -8,14 +7,14 @@ export function meta() {
   return [{ title: "Sign in — Circular Time" }];
 }
 
+/** Keeps an established application session out of the sign-in screen. */
+export async function loader({ request }: Route.LoaderArgs) {
+  const { getUserId } = await import("../lib/session.server");
+  if (await getUserId(request)) throw redirect("/");
+  return null;
+}
+
 export default function SignIn() {
-  const isAuthenticated = useIsAuthenticated();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (isAuthenticated) navigate("/", { replace: true });
-  }, [isAuthenticated, navigate]);
-
   async function signInWithGoogle() {
     const url = await startGoogleSignIn({ returnTo: "/" });
     if (!url) {

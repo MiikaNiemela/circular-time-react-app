@@ -7,12 +7,14 @@
  */
 
 import { startGoogleAuth } from "../data/providers/google";
+import { IDENTITY_SCOPE as GOOGLE_IDENTITY_SCOPE } from "../data/providers/google/auth";
 import {
   GOOGLE_CLIENT_ID,
   googleRedirectUri,
   isGoogleConfigured,
 } from "../data/providers/google/config";
 import { startOutlookAuth } from "../data/providers/outlook";
+import { IDENTITY_SCOPE as OUTLOOK_IDENTITY_SCOPE } from "../data/providers/outlook/auth";
 import {
   OUTLOOK_CLIENT_ID,
   isOutlookConfigured,
@@ -34,10 +36,11 @@ export async function startGoogleSignIn({ returnTo = "/" }: StartSignInOptions =
   string | null
 > {
   if (!isGoogleConfigured()) return null;
-  setPostAuthRedirect(returnTo);
+  setPostAuthRedirect({ intent: "sign-in", returnTo });
   return startGoogleAuth({
     clientId: GOOGLE_CLIENT_ID,
     redirectUri: googleRedirectUri(window.location.origin),
+    scope: GOOGLE_IDENTITY_SCOPE,
   });
 }
 
@@ -49,9 +52,10 @@ export async function startOutlookSignIn({ returnTo = "/" }: StartSignInOptions 
   string | null
 > {
   if (!isOutlookConfigured()) return null;
-  setPostAuthRedirect(returnTo);
+  setPostAuthRedirect({ intent: "sign-in", returnTo });
   return startOutlookAuth({
     clientId: OUTLOOK_CLIENT_ID,
     redirectUri: outlookRedirectUri(window.location.origin),
+    scope: OUTLOOK_IDENTITY_SCOPE,
   });
 }

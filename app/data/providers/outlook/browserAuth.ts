@@ -20,12 +20,15 @@ function sessionStore(): KeyValueStorage {
 export interface StartAuthOptions {
   clientId: string;
   redirectUri: string;
+  /** OAuth scopes requested for this flow; defaults to calendar access. */
+  scope?: string;
   storage?: KeyValueStorage;
 }
 
 export async function startOutlookAuth({
   clientId,
   redirectUri,
+  scope,
   storage = sessionStore(),
 }: StartAuthOptions): Promise<string> {
   const verifier = generateCodeVerifier();
@@ -35,7 +38,7 @@ export async function startOutlookAuth({
   storage.setItem(VERIFIER_KEY, verifier);
   storage.setItem(STATE_KEY, state);
 
-  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state });
+  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state, scope });
 }
 
 export interface CompleteAuthOptions {
@@ -45,6 +48,8 @@ export interface CompleteAuthOptions {
   state: string;
   storage?: KeyValueStorage;
   tokenStore?: OutlookTokenStore;
+  /** False for identity-only sign-in, which must not create a calendar connection. */
+  persistTokens?: boolean;
   fetchFn?: typeof fetch;
 }
 
@@ -55,6 +60,7 @@ export async function completeOutlookAuth({
   state,
   storage = sessionStore(),
   tokenStore = new OutlookTokenStore(),
+  persistTokens = true,
   fetchFn = fetch,
 }: CompleteAuthOptions): Promise<OutlookTokens> {
   const expectedState = storage.getItem(STATE_KEY);
@@ -74,7 +80,9 @@ export async function completeOutlookAuth({
     codeVerifier: verifier,
     fetchFn,
   });
-  tokenStore.set(tokens);
+  if (persistTokens) {
+    tokenStore.set(tokens);
+  }
 
   storage.removeItem(VERIFIER_KEY);
   storage.removeItem(STATE_KEY);
