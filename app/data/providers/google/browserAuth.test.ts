@@ -33,6 +33,19 @@ describe("startGoogleAuth", () => {
     expect(storage.getItem("circular-time-google-pkce-verifier")).toBeTruthy();
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
   });
+  it("uses the requested scope for an identity-only sign-in", async () => {
+    const storage = memoryStorage();
+    const url = new URL(
+      await startGoogleAuth({
+        clientId: "cid",
+        redirectUri: "https://app/cb",
+        scope: "openid email profile",
+        storage,
+      })
+    );
+
+    expect(url.searchParams.get("scope")).toBe("openid email profile");
+  });
 });
 
 describe("completeGoogleAuth", () => {
@@ -67,6 +80,31 @@ describe("completeGoogleAuth", () => {
     // One-time secrets cleared.
     expect(storage.getItem("circular-time-google-pkce-state")).toBeNull();
     expect(storage.getItem("circular-time-google-pkce-verifier")).toBeNull();
+  });
+
+  it("does not persist calendar tokens for an identity-only sign-in", async () => {
+    const storage = memoryStorage();
+    await startGoogleAuth({ clientId: "cid", redirectUri: "https://app/cb", storage });
+    const state = storage.getItem("circular-time-google-pkce-state")!;
+    const tokenStore = new GoogleTokenStore(memoryStorage());
+
+    await completeGoogleAuth({
+      clientId: "cid",
+      redirectUri: "https://app/cb",
+      code: "authcode",
+      state,
+      storage,
+      tokenStore,
+      persistTokens: false,
+      fetchFn: (async () =>
+        jsonResponse({
+          access_token: "identity-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        })) as unknown as typeof fetch,
+    });
+
+    expect(tokenStore.get()).toBeNull();
   });
 
   it("rejects a mismatched state (CSRF defence)", async () => {

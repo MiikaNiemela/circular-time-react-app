@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
-import Home, { action } from "./home";
+import Home, { action, loader } from "./home";
 import type { CalendarEventData } from "../lib/calendarTimeline";
 
 // Provider configs — keep tests free of env-var dependencies.
@@ -21,13 +21,11 @@ vi.mock("../data/providers/outlook/config", () => ({
 vi.mock("../lib/buildConfig", () => ({ isProduction: vi.fn(() => false) }));
 
 const mocks = vi.hoisted(() => ({
-  useIsAuthenticated: vi.fn(() => true),
   useShowTimeLapse: vi.fn(),
   useCalendarTimeline: vi.fn(),
   getDevFixtureCalendars: vi.fn(),
 }));
 
-vi.mock("../lib/authState", () => ({ useIsAuthenticated: mocks.useIsAuthenticated }));
 vi.mock("../lib/persistentState", () => ({
   useShowTimeLapse: mocks.useShowTimeLapse,
 }));
@@ -77,51 +75,48 @@ function makeStub(loaderData = DEFAULT_LOADER_DATA) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.useIsAuthenticated.mockReturnValue(true);
   mocks.useShowTimeLapse.mockReturnValue([false, vi.fn()]);
   mocks.useCalendarTimeline.mockReturnValue({ calendars: [], failedCalendars: [] });
   mocks.getDevFixtureCalendars.mockReturnValue([]);
   vi.mocked(isProduction).mockReturnValue(false); // dev mode by default
 });
 
-describe("Home route — auth gate", () => {
-  it("renders timeline controls when authenticated", async () => {
+describe("Home route — rendering", () => {
+  it("renders timeline controls when loader data is available", async () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/"]} />);
     await screen.findByRole("group", { name: /time view/i });
     expect(screen.getByRole("group", { name: /time view/i })).toBeTruthy();
   });
 
-  it("does not redirect in dev mode when unauthenticated (gate bypassed)", async () => {
-    mocks.useIsAuthenticated.mockReturnValue(false);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByRole("group", { name: /time view/i });
-    expect(screen.queryByTestId("sign-in-page")).toBeNull();
-  });
-
-  it("redirects to /sign-in when unauthenticated in production mode", async () => {
-    mocks.useIsAuthenticated.mockReturnValue(false);
-    vi.mocked(isProduction).mockReturnValue(true);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByTestId("sign-in-page");
-    expect(screen.queryByRole("group", { name: /time view/i })).toBeNull();
-  });
-
-  it("does not redirect when authenticated in production mode", async () => {
-    vi.mocked(isProduction).mockReturnValue(true);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByRole("group", { name: /time view/i });
-    expect(screen.queryByTestId("sign-in-page")).toBeNull();
-  });
-
-  it("shows 'No calendars connected' when authenticated but no calendars are linked", async () => {
+  it("shows 'No calendars connected' when no calendars are linked", async () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/?ref=2026-06-20"]} />);
     await screen.findByText(/No calendars connected/i);
     expect(screen.getByText(/No calendars connected/i)).toBeTruthy();
+  });
+});
+
+describe("Home route — server auth gate", () => {
+  it("redirects unauthenticated production requests before rendering the timeline", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(true);
+    const request = new Request("http://localhost/");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).rejects.toMatchObject({
+      status: 302,
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("keeps the development fixture reachable without a session", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(false);
+    const request = new Request("http://localhost/");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toEqual(
+      expect.objectContaining({ serverCalendars: [] })
+    );
   });
 });
 

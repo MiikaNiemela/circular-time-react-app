@@ -13,6 +13,9 @@ const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 // The browser never sees the secret; PKCE's code_verifier is still sent.
 const TOKEN_ENDPOINT = "/auth/google/token";
 
+/** Identity claims used to establish an application session without calendar access. */
+export const IDENTITY_SCOPE = "openid email profile";
+
 /** Read-only access to the user's calendar events. */
 export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 

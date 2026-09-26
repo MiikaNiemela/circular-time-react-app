@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
-import SignIn from "./sign-in";
+import SignIn, * as signInRoute from "./sign-in";
+
+const serverMocks = vi.hoisted(() => ({ getUserId: vi.fn() }));
+
+vi.mock("../lib/session.server", () => ({ getUserId: serverMocks.getUserId }));
 
 vi.mock("../data/providers/google/config", () => ({
   GOOGLE_CLIENT_ID: "test-google-id",
@@ -42,23 +46,43 @@ describe("SignIn route", () => {
     expect(screen.getByRole("button", { name: "Sign in with Outlook" })).toBeTruthy();
   });
 
-  it("redirects to / when Google tokens are already in localStorage", async () => {
+  it("redirects a request with an existing server session to the timeline", async () => {
+    const loader = (signInRoute as { loader?: unknown }).loader;
+    expect(loader).toBeTypeOf("function");
+    if (typeof loader !== "function") return;
+
+    serverMocks.getUserId.mockResolvedValue("user-uuid");
+    await expect(
+      loader({ request: new Request("http://localhost/sign-in") })
+    ).rejects.toMatchObject({
+      status: 302,
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("does not treat Google calendar tokens in localStorage as an application session", async () => {
     localStorage.setItem(
       "circular-time-google-tokens",
       JSON.stringify({ accessToken: "tok", expiresAt: Date.now() + 3_600_000 })
     );
     render(<SignInStub initialEntries={["/sign-in"]} />);
-    await screen.findByTestId("home");
-    expect(screen.queryByRole("heading", { name: "Circular Time" })).toBeNull();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Circular Time" })).toBeTruthy()
+    );
+    expect(screen.queryByTestId("home")).toBeNull();
   });
 
-  it("redirects to / when Outlook tokens are already in localStorage", async () => {
+  it("does not treat Outlook calendar tokens in localStorage as an application session", async () => {
     localStorage.setItem(
       "circular-time-outlook-tokens",
       JSON.stringify({ accessToken: "tok", expiresAt: Date.now() + 3_600_000 })
     );
     render(<SignInStub initialEntries={["/sign-in"]} />);
-    await screen.findByTestId("home");
-    expect(screen.queryByRole("heading", { name: "Circular Time" })).toBeNull();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Circular Time" })).toBeTruthy()
+    );
+    expect(screen.queryByTestId("home")).toBeNull();
   });
 });

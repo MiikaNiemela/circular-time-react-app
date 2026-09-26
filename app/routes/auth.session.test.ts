@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   fetchGoogleUserId: vi.fn(),
   fetchOutlookUserId: vi.fn(),
-  upsertUser: vi.fn(),
+  signInWithProvider: vi.fn(),
   mockSession: { get: vi.fn(), set: vi.fn(), flash: vi.fn(), unset: vi.fn() },
   getSession: vi.fn(),
   commitSession: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("../lib/userInfo.server", () => ({
 }));
 
 vi.mock("../lib/userRepository.server", () => ({
-  userRepository: { upsertUser: mocks.upsertUser },
+  userRepository: { signInWithProvider: mocks.signInWithProvider },
 }));
 
 vi.mock("react-router", () => ({
@@ -42,7 +42,7 @@ beforeEach(() => {
   mocks.commitSession.mockResolvedValue("__session=signed; HttpOnly");
   mocks.fetchGoogleUserId.mockResolvedValue("google-sub-123");
   mocks.fetchOutlookUserId.mockResolvedValue("outlook-id-abc");
-  mocks.upsertUser.mockResolvedValue("stable-user-uuid");
+  mocks.signInWithProvider.mockResolvedValue("stable-user-uuid");
 });
 
 describe("POST /auth/session", () => {
@@ -77,10 +77,21 @@ describe("POST /auth/session", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 when OAuth intent is missing", async () => {
+    // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
+    const res = await action({
+      request: makeRequest({ provider: "google", accessToken: "tok" }),
+      params: {},
+      context: {},
+    });
+    expect(res.status).toBe(400);
+    expect(mocks.signInWithProvider).not.toHaveBeenCalled();
+  });
+
   it("returns 400 for an unknown provider", async () => {
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "apple", accessToken: "tok" }),
+      request: makeRequest({ intent: "sign-in", provider: "apple", accessToken: "tok" }),
       params: {},
       context: {},
     });
@@ -91,7 +102,7 @@ describe("POST /auth/session", () => {
     mocks.fetchGoogleUserId.mockRejectedValue(new Error("Google userinfo failed: 401"));
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "google", accessToken: "bad" }),
+      request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "bad" }),
       params: {},
       context: {},
     });
@@ -102,7 +113,7 @@ describe("POST /auth/session", () => {
     mocks.fetchOutlookUserId.mockRejectedValue(new Error("Outlook /me failed: 401"));
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "outlook", accessToken: "bad" }),
+      request: makeRequest({ intent: "sign-in", provider: "outlook", accessToken: "bad" }),
       params: {},
       context: {},
     });
@@ -110,10 +121,10 @@ describe("POST /auth/session", () => {
   });
 
   it("returns 503 when the user repository throws", async () => {
-    mocks.upsertUser.mockRejectedValue(new Error("DB connection lost"));
+    mocks.signInWithProvider.mockRejectedValue(new Error("DB connection lost"));
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "google", accessToken: "tok" }),
+      request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "tok" }),
       params: {},
       context: {},
     });
@@ -123,26 +134,26 @@ describe("POST /auth/session", () => {
   it("returns 200 with Set-Cookie and stores the stable user ID for a valid Google token", async () => {
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "google", accessToken: "tok" }),
+      request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "tok" }),
       params: {},
       context: {},
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("Set-Cookie")).toContain("__session=signed");
-    expect(mocks.upsertUser).toHaveBeenCalledWith("google", "google-sub-123");
+    expect(mocks.signInWithProvider).toHaveBeenCalledWith("google", "google-sub-123");
     expect(mocks.mockSession.set).toHaveBeenCalledWith("userId", "stable-user-uuid");
   });
 
   it("returns 200 with Set-Cookie and stores the stable user ID for a valid Outlook token", async () => {
     // @ts-expect-error action arg shape differs from Route.ActionArgs in tests
     const res = await action({
-      request: makeRequest({ provider: "outlook", accessToken: "tok" }),
+      request: makeRequest({ intent: "sign-in", provider: "outlook", accessToken: "tok" }),
       params: {},
       context: {},
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("Set-Cookie")).toContain("__session=signed");
-    expect(mocks.upsertUser).toHaveBeenCalledWith("outlook", "outlook-id-abc");
+    expect(mocks.signInWithProvider).toHaveBeenCalledWith("outlook", "outlook-id-abc");
     expect(mocks.mockSession.set).toHaveBeenCalledWith("userId", "stable-user-uuid");
   });
 });

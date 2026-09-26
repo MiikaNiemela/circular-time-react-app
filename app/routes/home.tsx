@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
-import { useState, useMemo, useCallback, useEffect } from "react";
-import { Link, useNavigate, useLoaderData, useSearchParams, useFetcher } from "react-router";
+import { useState, useMemo, useCallback } from "react";
+import { Link, redirect, useLoaderData, useSearchParams, useFetcher } from "react-router";
 import { MultiCircle } from "../components/timeline";
 import { SegmentedControl, type TimeView } from "../components/SegmentedControl";
 import { PeriodNavigator } from "../components/PeriodNavigator";
@@ -10,7 +10,6 @@ import { slicesForViewOuterRing } from "../lib/timeSlices";
 import { eventRingsForCalendars } from "../lib/calendarTimeline";
 import { useCalendarTimeline } from "../lib/useCalendarTimeline";
 import { useShowTimeLapse } from "../lib/persistentState";
-import { useIsAuthenticated } from "../lib/authState";
 import { isProduction } from "../lib/buildConfig";
 import { getDevFixtureCalendars } from "../lib/devFixture";
 import type { CalendarEvent, CalendarEventData } from "../lib/calendarTimeline";
@@ -54,6 +53,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const ref = refDate.toISOString().slice(0, 10);
 
   if (!userId) {
+    if (isProduction()) throw redirect("/sign-in");
     return { serverCalendars: [] as CalendarEventData[], view, ref };
   }
 
@@ -124,21 +124,12 @@ export async function action({ request }: Route.ActionArgs) {
 export default function Home() {
   const { serverCalendars, view: loaderView, ref: loaderRef } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const fetcher = useFetcher();
 
-  const isAuthenticated = useIsAuthenticated();
   const view = (searchParams.get("view") ?? loaderView) as TimeView;
   // ref falls back to loader default (today) when the URL has no param yet.
   const refStr = searchParams.get("ref") ?? loaderRef;
   const reference = useMemo(() => new Date(refStr), [refStr]);
-
-  // Dev builds bypass the gate so the dev fixture is reachable without OAuth.
-  useEffect(() => {
-    if (!isAuthenticated && isProduction()) {
-      navigate("/sign-in", { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showTimeLapse, setShowTimeLapse] = useShowTimeLapse();

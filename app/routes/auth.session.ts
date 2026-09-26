@@ -4,22 +4,21 @@ import { fetchGoogleUserId, fetchOutlookUserId } from "../lib/userInfo.server";
 import { userRepository } from "../lib/userRepository.server";
 
 /**
- * Resource route (no default export): creates an HTTP-only signed session cookie
- * after a successful client-side OAuth exchange.
- *
- * The client POSTs { provider, accessToken } immediately after storing tokens in
- * localStorage; the server verifies the token with the provider, upserts the user
- * record in the database, and sets the session cookie containing the stable user ID.
+ * Resource route (no default export): establishes an HTTP-only application
+ * session after identity-only OAuth. Calendar connection is a separate intent.
  */
 export async function action({ request }: Route.ActionArgs) {
-  let body: { provider?: string; accessToken?: string };
+  let body: { intent?: string; provider?: string; accessToken?: string };
   try {
-    body = (await request.json()) as { provider?: string; accessToken?: string };
+    body = (await request.json()) as { intent?: string; provider?: string; accessToken?: string };
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { provider, accessToken } = body;
+  const { intent, provider, accessToken } = body;
+  if (intent !== "sign-in") {
+    return Response.json({ error: "Unknown OAuth intent" }, { status: 400 });
+  }
   if (!provider || !accessToken) {
     return Response.json({ error: "Missing provider or accessToken" }, { status: 400 });
   }
@@ -39,7 +38,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   let userId: string;
   try {
-    userId = await userRepository.upsertUser(provider, providerUserId);
+    userId = await userRepository.signInWithProvider(provider, providerUserId);
   } catch {
     return Response.json({ error: "Failed to store user identity" }, { status: 503 });
   }

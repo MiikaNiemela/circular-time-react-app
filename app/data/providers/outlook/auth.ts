@@ -9,6 +9,9 @@
 
 import type { OutlookTokens } from "./tokenStore";
 
+/** Identity claims used to establish an application session without calendar access. */
+export const IDENTITY_SCOPE = "openid profile email User.Read";
+
 /** Calendar.Read gives access to events in the user's primary mailbox. */
 export const CALENDAR_SCOPE = "Calendars.Read offline_access openid profile";
 

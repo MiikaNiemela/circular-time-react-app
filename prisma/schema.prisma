@@ -1,6 +1,6 @@
 // Prisma schema for Circular Time.
-// Use `npx prisma migrate dev` to apply migrations to a local database.
-// Use `npx prisma migrate deploy` in CI/production.
+// This greenfield application creates its database schema directly from this file.
+// Apply it to a freshly provisioned database with `npx prisma db push`.
 // Use `npx prisma generate` after schema changes to regenerate the client.
 
 generator client {
@@ -19,14 +19,16 @@ model User {
 }
 
 model ProviderAccount {
-  id             String   @id @default(uuid())
-  provider       String
-  providerUserId String
-  userId         String
-  createdAt      DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  provider          String
+  providerUserId    String
+  userId            String
+  calendarConnected Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
+  @@unique([userId, provider])
 }
 
 model CachedEventRange {
