@@ -8,6 +8,7 @@ describe("PrismaUserRepository", () => {
   let update: ReturnType<typeof vi.fn>;
   let repo: PrismaUserRepository;
 
+
   beforeEach(() => {
     upsert = vi.fn();
     findMany = vi.fn();
