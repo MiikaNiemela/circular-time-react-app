@@ -43,20 +43,6 @@ npx prisma migrate deploy
 The migration copies connected-provider state and its matching cached ranges to
 explicit calendar connections before replacing the legacy connection flag.
 
-### Development deployment database
-
-The development migration job connects through the Cloud SQL Auth Proxy. Its
-protected GitHub `development` environment requires these non-secret variables,
-whose values are Terraform outputs from the private operations repository:
-
-```text
-DEV_DATABASE_URL_SECRET_RESOURCE
-DEV_CLOUD_SQL_CONNECTION_NAME
-```
-
-`DATABASE_URL` and `SESSION_SECRET` remain Secret Manager values. Do not copy
-them into GitHub variables, workflow files, issue comments, or shell history.
-
 ---
 
 ## Why this project exists
