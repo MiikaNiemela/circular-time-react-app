@@ -41,9 +41,13 @@ vi.mock("./authState", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.isGoogleConfigured.mockReturnValue(true);
-  mocks.startGoogleAuth.mockResolvedValue("https://accounts.google.com/oauth");
+  mocks.startGoogleAuth.mockResolvedValue(
+    "https://accounts.google.com/oauth?state=google-pkce-state"
+  );
   mocks.isOutlookConfigured.mockReturnValue(true);
-  mocks.startOutlookAuth.mockResolvedValue("https://login.microsoftonline.com/oauth");
+  mocks.startOutlookAuth.mockResolvedValue(
+    "https://login.microsoftonline.com/oauth?state=outlook-pkce-state"
+  );
 });
 
 describe("startGoogleSignIn", () => {
@@ -56,7 +60,7 @@ describe("startGoogleSignIn", () => {
 
   it("returns the auth URL when Google is configured", async () => {
     const url = await startGoogleSignIn();
-    expect(url).toBe("https://accounts.google.com/oauth");
+    expect(url).toBe("https://accounts.google.com/oauth?state=google-pkce-state");
   });
 
   it("stores the returnTo path before starting OAuth", async () => {
@@ -64,6 +68,8 @@ describe("startGoogleSignIn", () => {
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "sign-in",
       returnTo: "/timeline",
+      provider: "google",
+      oauthState: "google-pkce-state",
     });
   });
 
@@ -72,6 +78,8 @@ describe("startGoogleSignIn", () => {
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "sign-in",
       returnTo: "/",
+      provider: "google",
+      oauthState: "google-pkce-state",
     });
   });
   it("uses identity-only scopes for sign-in", async () => {
@@ -93,7 +101,7 @@ describe("startOutlookSignIn", () => {
 
   it("returns the auth URL when Outlook is configured", async () => {
     const url = await startOutlookSignIn();
-    expect(url).toBe("https://login.microsoftonline.com/oauth");
+    expect(url).toBe("https://login.microsoftonline.com/oauth?state=outlook-pkce-state");
   });
 
   it("stores the returnTo path before starting OAuth", async () => {
@@ -101,6 +109,8 @@ describe("startOutlookSignIn", () => {
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "sign-in",
       returnTo: "/timeline",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
     });
   });
 
@@ -109,6 +119,8 @@ describe("startOutlookSignIn", () => {
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "sign-in",
       returnTo: "/",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
     });
   });
 
@@ -122,12 +134,14 @@ describe("startOutlookSignIn", () => {
 });
 
 describe("startGoogleCalendarConnection", () => {
-  it("records a calendar-connection intent and requests the calendar scope", async () => {
+  it("records a provider-bound calendar-connection intent and requests the calendar scope", async () => {
     await startGoogleCalendarConnection();
 
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "connect-calendar",
       returnTo: "/settings",
+      provider: "google",
+      oauthState: "google-pkce-state",
     });
     expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -145,12 +159,14 @@ describe("startGoogleCalendarConnection", () => {
 });
 
 describe("startOutlookCalendarConnection", () => {
-  it("records a calendar-connection intent and requests the calendar scope", async () => {
+  it("records a provider-bound calendar-connection intent and requests the calendar scope", async () => {
     await startOutlookCalendarConnection();
 
     expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
       intent: "connect-calendar",
       returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
     });
     expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
       expect.objectContaining({

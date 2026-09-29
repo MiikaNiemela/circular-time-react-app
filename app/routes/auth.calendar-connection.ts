@@ -1,6 +1,11 @@
 import type { Route } from "./+types/auth.calendar-connection";
 import { getUserId } from "../lib/session.server";
-import { fetchGoogleUserId, fetchOutlookUserId } from "../lib/userInfo.server";
+import {
+  fetchGoogleUserId,
+  fetchOutlookUserId,
+  verifyGoogleCalendarAccess,
+  verifyOutlookCalendarAccess,
+} from "../lib/userInfo.server";
 import { userRepository } from "../lib/userRepository.server";
 
 /**
@@ -40,10 +45,20 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
+    if (provider === "google") {
+      await verifyGoogleCalendarAccess(accessToken);
+    } else {
+      await verifyOutlookCalendarAccess(accessToken);
+    }
+  } catch {
+    return Response.json({ error: "Calendar-read access was not granted" }, { status: 403 });
+  }
+
+  try {
     const result = await userRepository.connectCalendarProvider(userId, provider, providerUserId);
     if (result === "conflict") {
       return Response.json(
-        { error: "Calendar identity belongs to another application account" },
+        { error: "Calendar identity is already connected to another application account" },
         { status: 409 }
       );
     }
@@ -51,5 +66,13 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Failed to store calendar connection" }, { status: 503 });
   }
 
-  return Response.json({ ok: true });
+  const calendarConnectionId = await userRepository.getCalendarConnectionId(userId, provider);
+  if (!calendarConnectionId) {
+    return Response.json(
+      { error: "Calendar connection disappeared before it could be saved" },
+      { status: 409 }
+    );
+  }
+
+  return Response.json({ ok: true, calendarConnectionId });
 }

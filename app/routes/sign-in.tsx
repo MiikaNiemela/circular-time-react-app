@@ -38,7 +38,7 @@ export default function SignIn() {
       <div className={card}>
         <h1 className={heading}>Circular Time</h1>
         <p className={subtitle}>
-          Sign in with your calendar provider to view your events as a circular timeline.
+          Sign in to use Circular Time. Connect a calendar separately in Settings to read events.
         </p>
         <div className={buttons}>
           <button type="button" className={providerButton} onClick={signInWithGoogle}>

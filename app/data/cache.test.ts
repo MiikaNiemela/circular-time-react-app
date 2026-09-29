@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { CalendarCache, type CacheEntry, type KeyValueStorage } from "./cache";
+import { CalendarCache, type LocalCacheEntry, type KeyValueStorage } from "./cache";
 import type { CalendarEvent } from "./types";
 
 function memoryStorage(): KeyValueStorage {
@@ -21,9 +21,10 @@ function event(id: string, calendarId: string): CalendarEvent {
   };
 }
 
-function entry(calendarId: string, events: CalendarEvent[]): CacheEntry {
+function entry(calendarId: string, events: CalendarEvent[]): LocalCacheEntry {
   return {
     calendarId,
+    calendarConnectionId: "connection-a",
     range: { start: "2026-06-19T00:00:00.000Z", end: "2026-06-20T00:00:00.000Z" },
     events,
     fetchedAt: "2026-06-19T11:00:00.000Z",
@@ -39,22 +40,29 @@ describe("CalendarCache", () => {
 
   it("returns undefined for an unknown calendar", () => {
     const cache = new CalendarCache(storage);
-    expect(cache.get("google")).toBeUndefined();
+    expect(cache.get("google", "connection-a")).toBeUndefined();
   });
 
   it("stores and retrieves an entry", () => {
     const cache = new CalendarCache(storage);
     const e = entry("google", [event("1", "google")]);
     cache.set(e);
-    expect(cache.get("google")).toEqual(e);
+    expect(cache.get("google", "connection-a")).toEqual(e);
   });
 
   it("replaces an existing entry for the same calendar", () => {
     const cache = new CalendarCache(storage);
     cache.set(entry("google", [event("1", "google")]));
     cache.set(entry("google", [event("2", "google")]));
-    expect(cache.get("google")?.events).toHaveLength(1);
-    expect(cache.get("google")?.events[0].id).toBe("2");
+    expect(cache.get("google", "connection-a")?.events).toHaveLength(1);
+    expect(cache.get("google", "connection-a")?.events[0].id).toBe("2");
+  });
+
+  it("does not return events cached under a previous calendar connection", () => {
+    const cache = new CalendarCache(storage);
+    cache.set({ ...entry("google", [event("a", "google")]), calendarConnectionId: "connection-a" });
+
+    expect(cache.get("google", "connection-b")).toBeUndefined();
   });
 
   it("lists all entries", () => {
@@ -69,8 +77,8 @@ describe("CalendarCache", () => {
     cache.set(entry("google", []));
     cache.set(entry("outlook", []));
     cache.remove("google");
-    expect(cache.get("google")).toBeUndefined();
-    expect(cache.get("outlook")).toBeDefined();
+    expect(cache.get("google", "connection-a")).toBeUndefined();
+    expect(cache.get("outlook", "connection-a")).toBeDefined();
   });
 
   it("clears all entries", () => {
@@ -85,7 +93,7 @@ describe("CalendarCache", () => {
     a.set(entry("google", [event("1", "google")]));
 
     const b = new CalendarCache(storage);
-    expect(b.get("google")?.events[0].id).toBe("1");
+    expect(b.get("google", "connection-a")?.events[0].id).toBe("1");
   });
 
   it("starts fresh when persisted data is corrupt", () => {

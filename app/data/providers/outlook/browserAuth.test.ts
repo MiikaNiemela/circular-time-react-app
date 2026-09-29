@@ -66,6 +66,8 @@ describe("completeOutlookAuth", () => {
       state,
       storage,
       tokenStore,
+      persistTokens: true,
+      calendarConnectionId: "connection-uuid",
       fetchFn: fetchFn as unknown as typeof fetch,
     });
 

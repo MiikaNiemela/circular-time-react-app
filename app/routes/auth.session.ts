@@ -38,7 +38,14 @@ export async function action({ request }: Route.ActionArgs) {
 
   let userId: string;
   try {
-    userId = await userRepository.signInWithProvider(provider, providerUserId);
+    const result = await userRepository.signInWithProvider(provider, providerUserId);
+    if (result.kind === "calendar-only") {
+      return Response.json(
+        { error: "Calendar-only identities cannot establish an application session" },
+        { status: 403 }
+      );
+    }
+    userId = result.userId;
   } catch {
     return Response.json({ error: "Failed to store user identity" }, { status: 503 });
   }

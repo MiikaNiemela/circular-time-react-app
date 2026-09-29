@@ -38,7 +38,17 @@ export default function GoogleCallback() {
       return;
     }
 
-    const flow = consumePostAuthRedirect() ?? { intent: "connect-calendar", returnTo: "/settings" };
+    const flow = consumePostAuthRedirect();
+    if (!flow) {
+      setError("OAuth flow state is missing. Start again from the sign-in or Settings page.");
+      return;
+    }
+    if (flow.provider !== "google" || flow.oauthState !== state) {
+      setError(
+        "OAuth flow state does not match this callback. Start again from the sign-in or Settings page."
+      );
+      return;
+    }
 
     completeGoogleAuth({
       clientId: GOOGLE_CLIENT_ID,
@@ -62,7 +72,15 @@ export default function GoogleCallback() {
           throw new Error("Unable to establish the application session.");
         }
         if (flow.intent === "connect-calendar") {
-          new GoogleTokenStore().set(tokens);
+          const result: unknown = await response.json();
+          const calendarConnectionId =
+            typeof result === "object" && result !== null && "calendarConnectionId" in result
+              ? (result as { calendarConnectionId?: unknown }).calendarConnectionId
+              : null;
+          if (typeof calendarConnectionId !== "string" || calendarConnectionId.length === 0) {
+            throw new Error("Calendar connection was not confirmed.");
+          }
+          new GoogleTokenStore().set({ ...tokens, calendarConnectionId });
         }
         navigate(flow.returnTo, { replace: true });
       })

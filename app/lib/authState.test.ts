@@ -12,8 +12,13 @@ afterEach(() => {
 });
 
 describe("OAuth flow state", () => {
-  it("records an identity-only sign-in flow and consumes it once", () => {
-    const flow = { intent: "sign-in" as const, returnTo: "/" };
+  it("records a provider-bound identity-only sign-in flow and consumes it once", () => {
+    const flow = {
+      intent: "sign-in" as const,
+      returnTo: "/",
+      provider: "google" as const,
+      oauthState: "google-pkce-state",
+    };
 
     setPostAuthRedirect(flow);
 
@@ -28,6 +33,13 @@ describe("OAuth flow state", () => {
 
   it("rejects malformed pending OAuth flow state", () => {
     sessionStorage.setItem(FLOW_KEY, "not-json");
+
+    expect(consumePostAuthRedirect()).toBeNull();
+    expect(sessionStorage.getItem(FLOW_KEY)).toBeNull();
+  });
+
+  it("rejects an OAuth flow without a provider-bound PKCE state", () => {
+    sessionStorage.setItem(FLOW_KEY, JSON.stringify({ intent: "sign-in", returnTo: "/" }));
 
     expect(consumePostAuthRedirect()).toBeNull();
     expect(sessionStorage.getItem(FLOW_KEY)).toBeNull();

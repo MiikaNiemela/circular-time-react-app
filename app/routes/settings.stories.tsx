@@ -66,6 +66,7 @@ export const GoogleConnected: Story = {
       JSON.stringify({
         accessToken: "mock-access-token",
         expiresAt: Date.now() + 3_600_000,
+        calendarConnectionId: "storybook-google-connection",
       })
     );
     return () => {

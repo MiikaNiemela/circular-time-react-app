@@ -1,4 +1,12 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+function isTransactionConflictError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
+}
 
 // No import of UserRepository here — the Data Layer must not import from Business Logic.
 // Structural compatibility with UserRepository is enforced at the assignment in
@@ -6,6 +14,24 @@ import type { PrismaClient } from "@prisma/client";
 /** Prisma-backed implementation of the UserRepository interface. */
 export class PrismaUserRepository {
   constructor(private readonly db: PrismaClient) {}
+
+  /** Retries a serializable identity operation when PostgreSQL detects a race. */
+  private async runSerializable<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>
+  ): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.db.$transaction(operation, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error: unknown) {
+        if (!isTransactionConflictError(error) || attempt === 2) throw error;
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
 
   /**
    * Links a provider identity to an existing application account. A provider
@@ -17,64 +43,154 @@ export class PrismaUserRepository {
     provider: string,
     providerUserId: string
   ): Promise<"linked" | "conflict"> {
-    const account = await this.db.providerAccount.upsert({
-      where: { provider_providerUserId: { provider, providerUserId } },
-      update: {},
-      create: { provider, providerUserId, userId },
-      select: { userId: true },
-    });
-    return account.userId === userId ? "linked" : "conflict";
+    try {
+      return await this.runSerializable(async (tx) => {
+        const existingAccount = await tx.providerAccount.findUnique({
+          where: { provider_providerUserId: { provider, providerUserId } },
+          select: { userId: true },
+        });
+        if (existingAccount) return existingAccount.userId === userId ? "linked" : "conflict";
+
+        const calendarConnection = await tx.calendarConnection.findUnique({
+          where: { provider_providerUserId: { provider, providerUserId } },
+          select: { id: true },
+        });
+        if (calendarConnection) return "conflict";
+
+        const account = await tx.providerAccount.create({
+          data: { provider, providerUserId, userId },
+          select: { userId: true },
+        });
+        return account.userId === userId ? "linked" : "conflict";
+      });
+    } catch (error: unknown) {
+      if (isUniqueConstraintError(error)) return "conflict";
+      throw error;
+    }
   }
 
   /**
-   * Marks a linked provider identity as an explicit calendar connection. The
-   * ownership check happens before the update so another account's identity can
-   * never be activated by the current user.
+   * Stores a verified calendar identity separately from identities that can
+   * establish an application session. A serializable pre-read of the matching
+   * sign-in identity excludes a concurrent calendar-only/sign-in race.
    */
   async connectCalendarProvider(
     userId: string,
     provider: string,
     providerUserId: string
   ): Promise<"connected" | "conflict"> {
-    const account = await this.db.providerAccount.upsert({
-      where: { provider_providerUserId: { provider, providerUserId } },
-      update: {},
-      create: { provider, providerUserId, userId, calendarConnected: true },
-      select: { userId: true },
-    });
-    if (account.userId !== userId) return "conflict";
+    try {
+      return await this.runSerializable(async (tx) => {
+        await tx.providerAccount.findUnique({
+          where: { provider_providerUserId: { provider, providerUserId } },
+          select: { id: true },
+        });
+        const connection = await tx.calendarConnection.upsert({
+          where: { provider_providerUserId: { provider, providerUserId } },
+          update: {},
+          create: { provider, providerUserId, userId },
+          select: { userId: true },
+        });
+        return connection.userId === userId ? "connected" : "conflict";
+      });
+    } catch (error: unknown) {
+      // The user already has a different identity for this provider, or the
+      // requested identity is concurrently connected by another account.
+      if (isUniqueConstraintError(error)) return "conflict";
+      throw error;
+    }
+  }
 
-    await this.db.providerAccount.update({
-      where: { provider_providerUserId: { provider, providerUserId } },
-      data: { calendarConnected: true },
+  /**
+   * Removes calendar access and all server-side cached events in one database
+   * transaction. Application sign-in identities are not affected.
+   */
+  async disconnectCalendarProvider(userId: string, provider: string): Promise<void> {
+    await this.db.$transaction(async (tx) => {
+      await tx.calendarConnection.deleteMany({
+        where: { userId, provider },
+      });
+      await tx.cachedEventRange.deleteMany({
+        where: { userId, calendarId: provider },
+      });
     });
-    return "connected";
+  }
+
+  /**
+   * Returns an active connection only when its immutable ID belongs to the
+   * current application account. The cache route uses providerUserId to bind an
+   * untrusted browser token to this exact connection before accepting events.
+   */
+  async getCalendarConnection(
+    userId: string,
+    calendarConnectionId: string
+  ): Promise<{ id: string; provider: string; providerUserId: string } | null> {
+    return this.db.calendarConnection.findUnique({
+      where: { id_userId: { id: calendarConnectionId, userId } },
+      select: { id: true, provider: true, providerUserId: true },
+    });
+  }
+
+  /** Returns the immutable connection ID used to bind one cache write. */
+  async getCalendarConnectionId(userId: string, provider: string): Promise<string | null> {
+    const connection = await this.db.calendarConnection.findUnique({
+      where: { userId_provider: { userId, provider } },
+      select: { id: true },
+    });
+    return connection?.id ?? null;
+  }
+
+  /** Returns immutable IDs and provider identities for the user's active connections. */
+  async getCalendarConnections(
+    userId: string
+  ): Promise<Array<{ id: string; provider: string; providerUserId: string }>> {
+    return this.db.calendarConnection.findMany({
+      where: { userId },
+      select: { id: true, provider: true, providerUserId: true },
+    });
   }
 
   /** Lists the calendar providers explicitly connected by the user. */
   async getConnectedProviders(userId: string): Promise<string[]> {
-    const accounts = await this.db.providerAccount.findMany({
-      where: { userId, calendarConnected: true },
+    const connections = await this.db.calendarConnection.findMany({
+      where: { userId },
       select: { provider: true },
     });
-    return accounts.map((a) => a.provider);
+    return connections.map((connection) => connection.provider);
   }
 
   /**
-   * Atomically upserts the ProviderAccount (and its parent User on first sign-in)
-   * using a single Prisma upsert to avoid a race on concurrent sign-ins.
+   * Resolves or creates an application identity atomically. A pre-existing
+   * ProviderAccount always remains a valid sign-in identity, even if that
+   * account also has the same provider connected for calendar access. A
+   * calendar connection without a ProviderAccount is rejected as calendar-only.
    */
-  async signInWithProvider(provider: string, providerUserId: string): Promise<string> {
-    const account = await this.db.providerAccount.upsert({
-      where: { provider_providerUserId: { provider, providerUserId } },
-      update: {},
-      create: {
-        provider,
-        providerUserId,
-        user: { create: {} },
-      },
-      select: { userId: true },
+  async signInWithProvider(
+    provider: string,
+    providerUserId: string
+  ): Promise<{ kind: "signed-in"; userId: string } | { kind: "calendar-only" }> {
+    return this.runSerializable(async (tx) => {
+      const existingAccount = await tx.providerAccount.findUnique({
+        where: { provider_providerUserId: { provider, providerUserId } },
+        select: { userId: true },
+      });
+      if (existingAccount) return { kind: "signed-in", userId: existingAccount.userId };
+
+      const calendarConnection = await tx.calendarConnection.findUnique({
+        where: { provider_providerUserId: { provider, providerUserId } },
+        select: { id: true },
+      });
+      if (calendarConnection) return { kind: "calendar-only" };
+
+      const account = await tx.providerAccount.create({
+        data: {
+          provider,
+          providerUserId,
+          user: { create: {} },
+        },
+        select: { userId: true },
+      });
+      return { kind: "signed-in", userId: account.userId };
     });
-    return account.userId;
   }
 }

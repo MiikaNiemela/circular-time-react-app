@@ -1,10 +1,12 @@
 /** Declares whether an OAuth completion signs in or connects a calendar. */
 export type OAuthIntent = "sign-in" | "connect-calendar";
 
-/** Holds one browser-local OAuth intent and its safe return destination. */
+/** Holds one browser-local OAuth flow, bound to its provider and PKCE state. */
 export interface PendingOAuthFlow {
   intent: OAuthIntent;
   returnTo: string;
+  provider: "google" | "outlook";
+  oauthState: string;
 }
 
 const POST_AUTH_KEY = "circular-time-post-auth-redirect";
@@ -14,7 +16,10 @@ function isPendingOAuthFlow(value: unknown): value is PendingOAuthFlow {
   const flow = value as Record<string, unknown>;
   return (
     (flow.intent === "sign-in" || flow.intent === "connect-calendar") &&
-    typeof flow.returnTo === "string"
+    typeof flow.returnTo === "string" &&
+    (flow.provider === "google" || flow.provider === "outlook") &&
+    typeof flow.oauthState === "string" &&
+    flow.oauthState.length > 0
   );
 }
 

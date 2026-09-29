@@ -63,7 +63,9 @@ export interface CompleteAuthOptions {
   state: string;
   storage?: KeyValueStorage;
   tokenStore?: GoogleTokenStore;
-  /** False for identity-only sign-in, which must not create a calendar connection. */
+  /** Server-issued connection ID required before a browser token can be persisted. */
+  calendarConnectionId?: string;
+  /** False by default; only a confirmed calendar connection may persist tokens. */
   persistTokens?: boolean;
   fetchFn?: typeof fetch;
 }
@@ -80,7 +82,8 @@ export async function completeGoogleAuth({
   state,
   storage = sessionStore(),
   tokenStore = new GoogleTokenStore(),
-  persistTokens = true,
+  calendarConnectionId,
+  persistTokens = false,
   fetchFn = fetch,
 }: CompleteAuthOptions): Promise<GoogleTokens> {
   const expectedState = storage.getItem(STATE_KEY);
@@ -101,7 +104,10 @@ export async function completeGoogleAuth({
     fetchFn,
   });
   if (persistTokens) {
-    tokenStore.set(tokens);
+    if (!calendarConnectionId) {
+      throw new Error("Cannot persist calendar tokens without a confirmed calendar connection");
+    }
+    tokenStore.set({ ...tokens, calendarConnectionId });
   }
 
   // One-time secrets: clear so they cannot be replayed.

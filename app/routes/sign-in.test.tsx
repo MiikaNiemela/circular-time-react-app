@@ -42,6 +42,11 @@ describe("SignIn route", () => {
   it("renders the app name and sign-in buttons when not authenticated", () => {
     render(<SignInStub initialEntries={["/sign-in"]} />);
     expect(screen.getByRole("heading", { name: "Circular Time" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Sign in to use Circular Time. Connect a calendar separately in Settings to read events."
+      )
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign in with Outlook" })).toBeTruthy();
   });

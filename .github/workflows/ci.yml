@@ -7,6 +7,11 @@ on:
 
 permissions: {}
 
+# Queue each main-branch release as one unit: migrate first, then deploy.
+concurrency:
+  group: development-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Test
@@ -63,16 +68,96 @@ jobs:
       - name: Build
         run: npm run build
 
-  deploy-development:
-    name: Deploy development
+  migrate-development:
+    name: Migrate development database
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: development
-    concurrency:
-      group: development-deployment
-      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Verify migration configuration
+        env:
+          DEV_DATABASE_URL_SECRET_RESOURCE: ${{ vars.DEV_DATABASE_URL_SECRET_RESOURCE }}
+          DEV_CLOUD_SQL_CONNECTION_NAME: ${{ vars.DEV_CLOUD_SQL_CONNECTION_NAME }}
+          DEV_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          DEV_GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEV_GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          test -n "$DEV_DATABASE_URL_SECRET_RESOURCE"
+          test -n "$DEV_CLOUD_SQL_CONNECTION_NAME"
+          test -n "$DEV_GCP_WORKLOAD_IDENTITY_PROVIDER"
+          test -n "$DEV_GCP_DEPLOY_SERVICE_ACCOUNT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEV_GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Install Cloud SQL Auth Proxy
+        run: |
+          proxy="$RUNNER_TEMP/cloud-sql-proxy"
+          curl --fail --location --silent --show-error \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.25.4/cloud-sql-proxy.linux.amd64 \
+            --output "$proxy"
+          printf '%s  %s\n' \
+            'b780c0d2c445ffd5d2fdba0925f2722c19fcd0d2c27c538e85713732698561f2' \
+            "$proxy" | sha256sum --check --status
+          chmod +x "$proxy"
+
+      - name: Apply committed Prisma migrations
+        env:
+          DEV_DATABASE_URL_SECRET_RESOURCE: ${{ vars.DEV_DATABASE_URL_SECRET_RESOURCE }}
+          DEV_CLOUD_SQL_CONNECTION_NAME: ${{ vars.DEV_CLOUD_SQL_CONNECTION_NAME }}
+        run: |
+          "$RUNNER_TEMP/cloud-sql-proxy" \
+            --address 127.0.0.1 \
+            --port 5432 \
+            "$DEV_CLOUD_SQL_CONNECTION_NAME" &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+
+          for _ in {1..30}; do
+            if ! kill -0 "$proxy_pid" 2>/dev/null; then
+              wait "$proxy_pid"
+              exit 1
+            fi
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null
+
+          DATABASE_URL="$(gcloud secrets versions access latest --secret="$DEV_DATABASE_URL_SECRET_RESOURCE")"
+          # The runtime secret targets Cloud Run's /cloudsql Unix socket. The
+          # GitHub runner uses its local Auth Proxy listener instead.
+          DATABASE_URL="${DATABASE_URL%%\?host=*}"
+          export DATABASE_URL
+          test -n "$DATABASE_URL"
+          npx prisma migrate deploy
+
+  deploy-development:
+    name: Deploy development
+    needs: migrate-development
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
     permissions:
       contents: read
       id-token: write
@@ -84,7 +169,6 @@ jobs:
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_OUTLOOK_CLIENT_ID: ${{ secrets.VITE_OUTLOOK_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET_RESOURCE: ${{ secrets.GOOGLE_CLIENT_SECRET_RESOURCE }}
           DEV_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
           DEV_GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEV_GCP_DEPLOY_SERVICE_ACCOUNT }}
           DEV_ARTIFACT_REGISTRY_HOST: ${{ secrets.DEV_ARTIFACT_REGISTRY_HOST }}
@@ -94,7 +178,6 @@ jobs:
         run: |
           test -n "$VITE_GOOGLE_CLIENT_ID"
           test -n "$VITE_OUTLOOK_CLIENT_ID"
-          test -n "$GOOGLE_CLIENT_SECRET_RESOURCE"
           test -n "$DEV_GCP_WORKLOAD_IDENTITY_PROVIDER"
           test -n "$DEV_GCP_DEPLOY_SERVICE_ACCOUNT"
           test -n "$DEV_ARTIFACT_REGISTRY_HOST"
@@ -135,6 +218,3 @@ jobs:
           service: ${{ secrets.DEV_CLOUD_RUN_SERVICE }}
           region: ${{ secrets.DEV_CLOUD_RUN_REGION }}
           image: ${{ steps.image.outputs.uri }}
-          env_vars: |-
-            GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET_RESOURCE=${{ secrets.GOOGLE_CLIENT_SECRET_RESOURCE }}

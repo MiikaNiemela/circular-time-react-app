@@ -12,6 +12,11 @@ export interface CacheEntry {
   fetchedAt: string;
 }
 
+export interface LocalCacheEntry extends CacheEntry {
+  /** Immutable server-issued connection ID that owned the browser fetch. */
+  calendarConnectionId: string;
+}
+
 /** Minimal subset of the Web Storage API the cache depends on. */
 export interface KeyValueStorage {
   getItem(key: string): string | null;
@@ -21,7 +26,7 @@ export interface KeyValueStorage {
 
 const STORAGE_KEY = "circular-time-cache";
 
-type Snapshot = Record<string, CacheEntry>;
+type Snapshot = Record<string, LocalCacheEntry>;
 
 /**
  * The local cache is the source of truth the UI reads; network fetches refresh
@@ -38,21 +43,24 @@ export class CalendarCache {
     this.snapshot = this.load();
   }
 
-  /** Returns the cached entry for a calendar, or `undefined` if none. */
-  get(calendarId: string): CacheEntry | undefined {
-    console.debug(
-      `Cache lookup for calendarId=${calendarId}: ${this.snapshot[calendarId] ? "HIT" : "MISS"}`
-    );
-    return this.snapshot[calendarId];
+  /**
+   * Returns an entry only when it belongs to the active immutable connection.
+   * Legacy rows and stale browser data are not safe to render after reconnect.
+   */
+  get(calendarId: string, calendarConnectionId: string): LocalCacheEntry | undefined {
+    const entry = this.snapshot[calendarId];
+    const hit = entry?.calendarConnectionId === calendarConnectionId;
+    console.debug(`Cache lookup for calendarId=${calendarId}: ${hit ? "HIT" : "MISS"}`);
+    return hit ? entry : undefined;
   }
 
   /** All cached entries, in insertion order. */
-  entries(): CacheEntry[] {
+  entries(): LocalCacheEntry[] {
     return Object.values(this.snapshot);
   }
 
   /** Writes (or replaces) the entry for a calendar and persists. */
-  set(entry: CacheEntry): void {
+  set(entry: LocalCacheEntry): void {
     console.debug(`Cache update for calendarId=${entry.calendarId}`);
     this.snapshot[entry.calendarId] = entry;
     this.persist();

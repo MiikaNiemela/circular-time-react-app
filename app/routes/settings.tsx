@@ -118,20 +118,30 @@ export default function Settings() {
     );
   }
 
-  function disconnect(id: string) {
-    if (id === "google") {
-      console.debug("disconnecting Google Calendar...");
-      new GoogleTokenStore().clear();
+  async function disconnect(id: string) {
+    if (id !== "google" && id !== "outlook") return;
+
+    try {
+      const response = await fetch("/auth/calendar-disconnection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to remove calendar connection");
+      }
+    } catch {
+      alert("Unable to disconnect the calendar. Try again.");
+      return;
     }
-    if (id === "outlook") {
-      console.debug("disconnecting Outlook Calendar...");
+
+    if (id === "google") {
+      new GoogleTokenStore().clear();
+    } else {
       new OutlookTokenStore().clear();
     }
-    if (id === "ical") {
-      console.debug("disconnecting iCal Calendar (no-op)...");
-      // No storage to clear for iCal since there's no implementation yet.
-    }
-    // Drop cached events so a disconnected calendar leaves nothing behind.
+    // Drop browser-cached events only after the server transaction removed the
+    // provider connection and its server-side cache.
     new CalendarCache().remove(id);
     setProviders((ps) =>
       ps.map((p) => (p.id === id ? { ...p, connected: false, enabled: false } : p))

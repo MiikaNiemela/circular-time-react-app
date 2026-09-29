@@ -34,8 +34,17 @@ beforeEach(() => {
   mocks.OutlookTokenStore.mockImplementation(function OutlookTokenStoreMock() {
     return { set: mocks.persistCalendarTokens };
   });
-  mocks.consumePostAuthRedirect.mockReturnValue({ intent: "sign-in", returnTo: "/" });
-  mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  mocks.consumePostAuthRedirect.mockReturnValue({
+    intent: "sign-in",
+    returnTo: "/",
+    provider: "outlook",
+    oauthState: "oauth-state",
+  });
+  mocks.fetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true, calendarConnectionId: "outlook-connection-uuid" }), {
+      status: 200,
+    })
+  );
   vi.stubGlobal("fetch", mocks.fetch);
 });
 
@@ -65,10 +74,39 @@ describe("Outlook OAuth callback", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 
+  it("fails closed instead of defaulting to a calendar connection when no OAuth flow is pending", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue(null);
+    const { findByText } = render(<OutlookCallback />);
+
+    await findByText("OAuth flow state is missing. Start again from the sign-in or Settings page.");
+
+    expect(mocks.completeOutlookAuth).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the pending OAuth provider does not match the callback", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue({
+      intent: "sign-in",
+      returnTo: "/",
+      provider: "google",
+      oauthState: "oauth-state",
+    });
+    const { findByText } = render(<OutlookCallback />);
+
+    await findByText(
+      "OAuth flow state does not match this callback. Start again from the sign-in or Settings page."
+    );
+
+    expect(mocks.completeOutlookAuth).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
   it("posts a calendar connection to its authenticated endpoint after persisting calendar tokens", async () => {
     mocks.consumePostAuthRedirect.mockReturnValue({
       intent: "connect-calendar",
       returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "oauth-state",
     });
     render(<OutlookCallback />);
 
@@ -81,6 +119,7 @@ describe("Outlook OAuth callback", () => {
     await waitFor(() =>
       expect(mocks.persistCalendarTokens).toHaveBeenCalledWith({
         accessToken: "identity-access-token",
+        calendarConnectionId: "outlook-connection-uuid",
       })
     );
 

@@ -21,6 +21,18 @@ beforeEach(() => {
   mocks.getSession.mockResolvedValue(mocks.session);
 });
 
+describe("session secret configuration", () => {
+  it("rejects production startup when SESSION_SECRET is missing", async () => {
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SESSION_SECRET", "");
+
+    await expect(import("./session.server")).rejects.toThrow(
+      "SESSION_SECRET must be set in production"
+    );
+  });
+});
+
 describe("getUserId", () => {
   it("returns null when no userId is in the session", async () => {
     mocks.session.get.mockReturnValue(undefined);

@@ -32,7 +32,7 @@ The three layers and their boundaries are unchanged; the server-side work added 
 
 **Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity: a signed, HTTP-only session cookie maps each request to a stable user ID, anchoring server-side data to a user rather than a device.
 
-**Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus two repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range) and the user store (linked provider accounts). The server cache is the source of truth the UI reads from; the browser-side provider fetch exists only to populate it.
+**Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus two repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range) and the user store (application sign-in identities and separate calendar connections). Each cached range is linked to an active calendar connection, so the database removes linked ranges when that connection is deleted. The server cache is the source of truth the UI reads from; the browser-side provider fetch exists only to populate it.
 
 ## Component model (timeline core)
 
@@ -91,7 +91,7 @@ The application runs as a Node.js SSR server through `react-router-serve` in a c
 
 ### Persistence
 
-User records and cached calendar events live in a PostgreSQL database through Prisma and `@prisma/adapter-pg`. The deployment environment supplies `DATABASE_URL` and `SESSION_SECRET`; neither value is baked into an image. Business logic reaches the database only through repository interfaces, so the concrete driver remains replaceable.
+User records and cached calendar events live in a PostgreSQL database through Prisma and `@prisma/adapter-pg`. Schema changes are version-controlled in the Prisma migration history. The deployment environment supplies `DATABASE_URL` and `SESSION_SECRET`; neither value is baked into an image. Business logic reaches the database only through repository interfaces, so the concrete driver remains replaceable.
 
 ### Google OAuth
 

@@ -34,8 +34,17 @@ beforeEach(() => {
   mocks.GoogleTokenStore.mockImplementation(function GoogleTokenStoreMock() {
     return { set: mocks.persistCalendarTokens };
   });
-  mocks.consumePostAuthRedirect.mockReturnValue({ intent: "sign-in", returnTo: "/" });
-  mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  mocks.consumePostAuthRedirect.mockReturnValue({
+    intent: "sign-in",
+    returnTo: "/",
+    provider: "google",
+    oauthState: "oauth-state",
+  });
+  mocks.fetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true, calendarConnectionId: "google-connection-uuid" }), {
+      status: 200,
+    })
+  );
   vi.stubGlobal("fetch", mocks.fetch);
 });
 
@@ -65,10 +74,39 @@ describe("Google OAuth callback", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 
+  it("fails closed instead of defaulting to a calendar connection when no OAuth flow is pending", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue(null);
+    const { findByText } = render(<GoogleCallback />);
+
+    await findByText("OAuth flow state is missing. Start again from the sign-in or Settings page.");
+
+    expect(mocks.completeGoogleAuth).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the pending OAuth state does not match the callback", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue({
+      intent: "sign-in",
+      returnTo: "/",
+      provider: "google",
+      oauthState: "different-state",
+    });
+    const { findByText } = render(<GoogleCallback />);
+
+    await findByText(
+      "OAuth flow state does not match this callback. Start again from the sign-in or Settings page."
+    );
+
+    expect(mocks.completeGoogleAuth).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
   it("posts a calendar connection to its authenticated endpoint after persisting calendar tokens", async () => {
     mocks.consumePostAuthRedirect.mockReturnValue({
       intent: "connect-calendar",
       returnTo: "/settings",
+      provider: "google",
+      oauthState: "oauth-state",
     });
     render(<GoogleCallback />);
 
@@ -81,6 +119,7 @@ describe("Google OAuth callback", () => {
     await waitFor(() =>
       expect(mocks.persistCalendarTokens).toHaveBeenCalledWith({
         accessToken: "identity-access-token",
+        calendarConnectionId: "google-connection-uuid",
       })
     );
 

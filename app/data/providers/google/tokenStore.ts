@@ -19,6 +19,11 @@ export interface GoogleTokens {
   expiresAt: number;
 }
 
+export interface StoredGoogleTokens extends GoogleTokens {
+  /** Immutable server-issued ID of the calendar connection this token authorized. */
+  calendarConnectionId: string;
+}
+
 const STORAGE_KEY = "circular-time-google-tokens";
 
 /** Refresh slightly early to avoid races against the exact expiry instant. */
@@ -28,21 +33,31 @@ const EXPIRY_SKEW_MS = 60_000;
 export class GoogleTokenStore {
   constructor(private readonly storage: KeyValueStorage = defaultStorage()) {}
 
-  get(): GoogleTokens | null {
+  get(): StoredGoogleTokens | null {
     const raw = this.storage.getItem(STORAGE_KEY);
     if (!raw) {
       console.debug("No Google tokens found");
       return null;
     }
     try {
-      return JSON.parse(raw) as GoogleTokens;
+      const tokens: unknown = JSON.parse(raw);
+      const record: Record<string, unknown> | null =
+        typeof tokens === "object" && tokens !== null ? (tokens as Record<string, unknown>) : null;
+      if (
+        typeof record?.calendarConnectionId !== "string" ||
+        record.calendarConnectionId.length === 0
+      ) {
+        this.clear();
+        return null;
+      }
+      return tokens as StoredGoogleTokens;
     } catch {
       console.debug("Failed to parse Google tokens");
       return null;
     }
   }
 
-  set(tokens: GoogleTokens): void {
+  set(tokens: StoredGoogleTokens): void {
     this.storage.setItem(STORAGE_KEY, JSON.stringify(tokens));
   }
 

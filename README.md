@@ -10,6 +10,55 @@ This repository is the **React (web) successor** to the original [React Native a
 
 ---
 
+## Accounts and calendar access
+
+Sign in creates or resumes a Circular Time application session using a Google or
+Microsoft account as identity. Signing in does not grant access to calendar
+data.
+
+To read calendar events, open **Settings** and select **Connect** next to
+Google Calendar or Outlook / Microsoft 365. The provider then asks separately
+for calendar-read permission. On approval, the calendar is connected to the
+signed-in Circular Time account and returns to Settings. Calendar connections
+are stored separately from identities that create application sessions, so a
+calendar connection cannot create or merge application accounts.
+
+## Database schema
+
+Prisma schema changes are version-controlled in `prisma/migrations/`. Use
+`npx prisma migrate dev` against a local development database and
+`npx prisma migrate deploy` before starting an environment on a new application
+revision. Database connection values remain deployment secrets.
+
+### Baseline reconciliation
+
+A database created directly from the M9 schema has no Prisma migration history.
+Mark the M9 baseline as applied, then run the additive migration:
+
+```sh
+npx prisma migrate resolve --applied 20260926000000_baseline_m9_schema
+npx prisma migrate deploy
+```
+
+The migration copies connected-provider state and its matching cached ranges to
+explicit calendar connections before replacing the legacy connection flag.
+
+### Development deployment database
+
+The development migration job connects through the Cloud SQL Auth Proxy. Its
+protected GitHub `development` environment requires these non-secret variables,
+whose values are Terraform outputs from the private operations repository:
+
+```text
+DEV_DATABASE_URL_SECRET_RESOURCE
+DEV_CLOUD_SQL_CONNECTION_NAME
+```
+
+`DATABASE_URL` and `SESSION_SECRET` remain Secret Manager values. Do not copy
+them into GitHub variables, workflow files, issue comments, or shell history.
+
+---
+
 ## Why this project exists
 
 Three goals, in order:

@@ -18,6 +18,7 @@ const HomeStub = createRoutesStub([
     // Empty serverCalendars triggers the cold-cache path so the dev fixture renders.
     loader: () => ({
       serverCalendars: [],
+      calendarConnections: [],
       view: "day",
       ref: new Date().toISOString().slice(0, 10),
     }),

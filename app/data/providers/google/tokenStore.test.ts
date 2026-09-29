@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GoogleTokenStore, type GoogleTokens } from "./tokenStore";
+import { GoogleTokenStore, type StoredGoogleTokens } from "./tokenStore";
 import type { KeyValueStorage } from "../../cache";
 
 function memoryStorage(): KeyValueStorage {
@@ -13,8 +13,13 @@ function memoryStorage(): KeyValueStorage {
 
 const NOW = new Date("2026-06-19T12:00:00.000Z");
 
-function tokens(expiresAt: number): GoogleTokens {
-  return { accessToken: "at", refreshToken: "rt", expiresAt };
+function tokens(expiresAt: number): StoredGoogleTokens {
+  return {
+    accessToken: "at",
+    refreshToken: "rt",
+    expiresAt,
+    calendarConnectionId: "connection-uuid",
+  };
 }
 
 describe("GoogleTokenStore", () => {
@@ -33,6 +38,15 @@ describe("GoogleTokenStore", () => {
     const t = tokens(NOW.getTime() + 3600_000);
     store.set(t);
     expect(store.get()).toEqual(t);
+  });
+
+  it("rejects legacy tokens that are not bound to an immutable calendar connection", () => {
+    storage.setItem(
+      "circular-time-google-tokens",
+      JSON.stringify({ accessToken: "old", expiresAt: NOW.getTime() + 3600_000 })
+    );
+
+    expect(new GoogleTokenStore(storage).get()).toBeNull();
   });
 
   it("clears tokens", () => {

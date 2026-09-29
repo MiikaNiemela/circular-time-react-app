@@ -15,7 +15,9 @@ vi.mock("../lib/userInfo.server", () => ({
 }));
 
 vi.mock("../lib/userRepository.server", () => ({
-  userRepository: { signInWithProvider: mocks.signInWithProvider },
+  userRepository: {
+    signInWithProvider: mocks.signInWithProvider,
+  },
 }));
 
 vi.mock("react-router", () => ({
@@ -43,7 +45,7 @@ beforeEach(() => {
   mocks.commitSession.mockResolvedValue("__session=signed; HttpOnly");
   mocks.fetchGoogleUserId.mockResolvedValue("google-sub-123");
   mocks.fetchOutlookUserId.mockResolvedValue("outlook-id-abc");
-  mocks.signInWithProvider.mockResolvedValue("stable-user-uuid");
+  mocks.signInWithProvider.mockResolvedValue({ kind: "signed-in", userId: "stable-user-uuid" });
 });
 
 describe("POST /auth/session", () => {
@@ -130,6 +132,24 @@ describe("POST /auth/session", () => {
       context: {},
     });
     expect(res.status).toBe(503);
+  });
+
+  it("returns 403 when an identity is only registered as a calendar connection", async () => {
+    mocks.signInWithProvider.mockResolvedValue({ kind: "calendar-only" });
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const res = await action({
+      request: makeRequest({
+        intent: "sign-in",
+        provider: "google",
+        accessToken: "calendar-token",
+      }),
+      params: {},
+      context: {},
+    });
+
+    expect(res.status).toBe(403);
+    expect(mocks.signInWithProvider).toHaveBeenCalledWith("google", "google-sub-123");
+    expect(mocks.mockSession.set).not.toHaveBeenCalled();
   });
 
   it("returns 200 with Set-Cookie and stores the stable user ID for a valid Google token", async () => {

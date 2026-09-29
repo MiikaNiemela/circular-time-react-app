@@ -24,6 +24,7 @@ import { OutlookCalendarProvider, OutlookTokenStore } from "../data/providers/ou
 import { OUTLOOK_CLIENT_ID } from "../data/providers/outlook/config";
 import type { CalendarEventData } from "./calendarTimeline";
 import type { CacheEntry } from "../data/cache";
+import type { CalendarConnection } from "./userRepository";
 
 /** Re-exported so UI routes don't need to reach into the data layer. */
 export type { CacheEntry };
@@ -33,21 +34,26 @@ export type { CacheEntry };
  * is connected, and how to build a provider to fetch from it. Adding iCal
  * (Milestone 3.5) is a matter of appending an entry here.
  */
+interface BrowserCalendarTokens {
+  accessToken: string;
+  calendarConnectionId: string;
+}
+
 interface ProviderEntry {
   id: string;
-  isConnected: () => boolean;
+  tokens: () => BrowserCalendarTokens | null;
   create: () => CalendarProvider;
 }
 
 const PROVIDERS: ProviderEntry[] = [
   {
     id: "google",
-    isConnected: () => new GoogleTokenStore().get() != null,
+    tokens: () => new GoogleTokenStore().get(),
     create: () => new GoogleCalendarProvider({ clientId: GOOGLE_CLIENT_ID }),
   },
   {
     id: "outlook",
-    isConnected: () => new OutlookTokenStore().get() != null,
+    tokens: () => new OutlookTokenStore().get(),
     create: () => new OutlookCalendarProvider({ clientId: OUTLOOK_CLIENT_ID }),
   },
 ];
@@ -69,8 +75,17 @@ function covers(outer: TimeRange | undefined, inner: TimeRange): boolean {
   );
 }
 
+/** A fetched local-cache entry with connection-bound evidence for server cache warming. */
+export interface FetchedCalendarEntry extends CacheEntry {
+  /** Immutable connection ID and token are rechecked server-side before cache persistence. */
+  calendarConnectionId: string;
+  accessToken: string;
+}
+
 /** Options for {@link useCalendarTimeline}. */
 export interface UseCalendarTimelineOptions {
+  /** Active server-authoritative connections for the authenticated account. */
+  calendarConnections?: CalendarConnection[];
   /**
    * When false, no fetching occurs and an empty result is returned immediately.
    * Pass false when the server already has fresh data so the hook acts as a no-op.
@@ -80,7 +95,7 @@ export interface UseCalendarTimelineOptions {
    * Called after each calendar's events are successfully fetched and written to
    * the local cache. Use this to warm the server-side DB cache via an action.
    */
-  onFetched?: (entry: CacheEntry) => void;
+  onFetched?: (entry: FetchedCalendarEntry) => void;
 }
 
 /**
@@ -100,7 +115,7 @@ export function useCalendarTimeline(
   // "past vs future" stays anchored to the real clock. Null until the reference
   // resolves post-hydration — the effect no-ops until then.
   const referenceMs = reference?.getTime() ?? null;
-  const { enabled = true } = options;
+  const { enabled = true, calendarConnections = [] } = options;
 
   // Stable ref so the effect always calls the latest callback without adding it
   // to the dependency array (which would re-trigger fetches on every render).
@@ -117,13 +132,25 @@ export function useCalendarTimeline(
     const cache = new CalendarCache();
     const range = eventWindow(view, new Date(referenceMs));
 
-    const active = PROVIDERS.filter((p) => p.isConnected() && visibility.isVisible(p.id));
+    const active = calendarConnections.flatMap((connection) => {
+      const entry = PROVIDERS.find((provider) => provider.id === connection.provider);
+      const tokens = entry?.tokens();
+      if (
+        !entry ||
+        !tokens ||
+        tokens.calendarConnectionId !== connection.id ||
+        !visibility.isVisible(connection.provider)
+      ) {
+        return [];
+      }
+      return [{ entry, connection }];
+    });
 
     async function run() {
       const newFailures: string[] = [];
       const results = await Promise.all(
-        active.map(async (entry): Promise<CalendarEventData> => {
-          const cached = cache.get(entry.id);
+        active.map(async ({ entry, connection }): Promise<CalendarEventData> => {
+          const cached = cache.get(entry.id, connection.id);
           let events = cached?.events ?? [];
           let fetchedRange: TimeRange | null = covers(cached?.range, range) ? cached!.range : null;
 
@@ -135,14 +162,21 @@ export function useCalendarTimeline(
             try {
               events = await entry.create().fetchEvents(range);
               fetchedRange = range;
-              const cacheEntry: CacheEntry = {
+              const cacheEntry = {
                 calendarId: entry.id,
+                calendarConnectionId: connection.id,
                 range,
                 events,
                 fetchedAt: now.toISOString(),
               };
               cache.set(cacheEntry);
-              onFetchedRef.current?.(cacheEntry);
+              // Providers can refresh browser tokens as part of fetchEvents. Read
+              // back the current record before cache warming so the server gets a
+              // usable credential, and never post across a reconnect boundary.
+              const currentTokens = entry.tokens();
+              if (currentTokens?.calendarConnectionId === connection.id) {
+                onFetchedRef.current?.({ ...cacheEntry, accessToken: currentTokens.accessToken });
+              }
             } catch (err) {
               newFailures.push(entry.id);
               // Keep cached data (possibly empty) on a failed refresh.
@@ -164,6 +198,6 @@ export function useCalendarTimeline(
     return () => {
       cancelled = true;
     };
-  }, [view, referenceMs, enabled]);
+  }, [view, referenceMs, enabled, calendarConnections]);
   return { calendars: data, failedCalendars };
 }

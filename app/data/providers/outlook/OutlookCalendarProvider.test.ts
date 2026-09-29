@@ -21,7 +21,7 @@ const RANGE = { start: "2026-06-19T00:00:00Z", end: "2026-06-20T00:00:00Z" };
 
 function storeWith(tokens: object): OutlookTokenStore {
   const store = new OutlookTokenStore(memoryStorage());
-  store.set(tokens as never);
+  store.set({ ...tokens, calendarConnectionId: "connection-uuid" } as never);
   return store;
 }
 
