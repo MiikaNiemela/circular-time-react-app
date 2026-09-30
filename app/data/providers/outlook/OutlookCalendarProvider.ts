@@ -1,6 +1,4 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
-import { OutlookTokenStore } from "./tokenStore";
-import { refreshAccessToken } from "./auth";
 
 /**
  * Microsoft Graph API endpoint for the user's default calendar view.
@@ -34,53 +32,30 @@ function mapEvent(api: GraphEvent): CalendarEvent {
 }
 
 export interface OutlookProviderConfig {
-  clientId: string;
-  tokenStore?: OutlookTokenStore;
+  /** Supplies a valid access token; the server refreshes it when needed. */
+  accessToken: () => Promise<string>;
   fetchFn?: typeof fetch;
 }
 
+/**
+ * Reads events from the user's default Outlook calendar. Credential custody
+ * and refresh live on the server; this provider only asks for a valid token.
+ */
 export class OutlookCalendarProvider implements CalendarProvider {
   readonly id = "outlook";
   readonly name = "Outlook / Microsoft 365";
 
-  private readonly clientId: string;
-  private readonly tokenStore: OutlookTokenStore;
+  private readonly accessToken: () => Promise<string>;
   private readonly fetchFn: typeof fetch;
 
   constructor(config: OutlookProviderConfig) {
-    this.clientId = config.clientId;
-    this.tokenStore = config.tokenStore ?? new OutlookTokenStore();
+    this.accessToken = config.accessToken;
     // bind prevents "Illegal invocation" when fetch is called as a method
     this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
   }
 
-  private async accessToken(): Promise<string> {
-    console.debug("fetching Outlook access token...");
-    let tokens = this.tokenStore.get();
-    if (!tokens) {
-      console.error("Outlook Calendar is not connected");
-      throw new Error("Outlook Calendar is not connected");
-    }
-
-    if (this.tokenStore.isExpired()) {
-      console.debug("Outlook access token expired; refreshing...");
-      if (!tokens.refreshToken) {
-        console.error("Outlook session expired; reconnect required");
-        throw new Error("Outlook session expired; reconnect required");
-      }
-      tokens = await refreshAccessToken({
-        clientId: this.clientId,
-        refreshToken: tokens.refreshToken,
-        fetchFn: this.fetchFn,
-      });
-      this.tokenStore.set(tokens);
-    }
-    return tokens.accessToken;
-  }
-
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
     const token = await this.accessToken();
-
     const url = new URL(EVENTS_ENDPOINT);
     url.searchParams.set("startDateTime", new Date(range.start).toISOString());
     url.searchParams.set("endDateTime", new Date(range.end).toISOString());
@@ -94,14 +69,11 @@ export class OutlookCalendarProvider implements CalendarProvider {
         "Content-Type": "application/json",
       },
     });
-
     if (!res.ok) {
-      console.error(`Outlook Calendar fetch failed: ${res.status}`);
       throw new Error(`Outlook Calendar fetch failed: ${res.status}`);
     }
 
     const data = (await res.json()) as GraphEventsResponse;
-    console.debug(`Outlook Calendar API returned ${data.value?.length ?? 0} events`);
     return (data.value ?? []).filter((e) => e.start && e.end).map(mapEvent);
   }
 }

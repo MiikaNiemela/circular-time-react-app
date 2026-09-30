@@ -74,3 +74,36 @@ export function useShowTimeLapse(): [boolean, (show: boolean) => void] {
   const setShow = useCallback((value: boolean) => persist(TIME_LAPSE_KEY, String(value)), []);
   return [show, setShow];
 }
+
+const VISIBILITY_KEY = "circular-time-calendar-visibility";
+const NONE_HIDDEN: string[] = [];
+let hiddenCache: { raw: string | null; hidden: string[] } | null = null;
+
+function hiddenCalendarsSnapshot(): string[] {
+  const raw = localStorage.getItem(VISIBILITY_KEY);
+  if (!hiddenCache || hiddenCache.raw !== raw) {
+    let hidden = NONE_HIDDEN;
+    try {
+      const map: unknown = raw ? JSON.parse(raw) : null;
+      if (map && typeof map === "object") {
+        hidden = Object.entries(map as Record<string, unknown>)
+          .filter(([, visible]) => visible === false)
+          .map(([id]) => id);
+      }
+    } catch {
+      // A corrupt preference hides nothing.
+    }
+    hiddenCache = { raw, hidden };
+  }
+  return hiddenCache.hidden;
+}
+
+const hiddenCalendarsServerSnapshot = (): string[] => NONE_HIDDEN;
+
+/**
+ * Calendar IDs the user hid in Settings. Every calendar is shown during SSR
+ * and the first client render, then hidden ones drop out after hydration.
+ */
+export function useHiddenCalendars(): string[] {
+  return useSyncExternalStore(subscribe, hiddenCalendarsSnapshot, hiddenCalendarsServerSnapshot);
+}

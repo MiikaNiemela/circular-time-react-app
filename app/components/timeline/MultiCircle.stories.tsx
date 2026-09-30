@@ -266,6 +266,79 @@ export const TwoCalendars: Story = {
   },
 };
 
+/** An event from Fri 22:00 to Sat 02:00 as it appears on each of the two days. */
+const OVERNIGHT_EVENT: CalendarEvent = {
+  id: "overnight",
+  calendarId: "google",
+  title: "Overnight deploy",
+  start: new Date(2026, 5, 19, 22).toISOString(),
+  end: new Date(2026, 5, 20, 2).toISOString(),
+  color: "#4285f4",
+};
+
+function overnightRings(now: Date): RingConfig[] {
+  const fetchedRange = {
+    start: new Date(2026, 5, 19).toISOString(),
+    end: new Date(2026, 5, 21).toISOString(),
+  };
+  return [
+    ...slicesForView("day", now),
+    ...eventRingsForCalendars(
+      [{ calendarId: "google", fetchedRange, events: [OVERNIGHT_EVENT] }],
+      "day",
+      now
+    ),
+  ];
+}
+
+/**
+ * Cross-boundary events: an event that continues past midnight renders on both
+ * days. Friday's ring shows its first two hours ending at the top (midnight);
+ * Saturday's shows the remaining two hours starting there. The same clamping
+ * applies at week, month, and year boundaries.
+ */
+export const CrossBoundaryEvent: Story = {
+  args: { onSliceClick: fn() },
+  render: ({ onSliceClick }) => (
+    <ThemeProvider>
+      <div style={{ display: "flex", gap: "2rem" }}>
+        <figure data-testid="friday">
+          <MultiCircle
+            rings={overnightRings(new Date(2026, 5, 19, 12))}
+            onSliceClick={onSliceClick}
+          />
+          <figcaption>Friday</figcaption>
+        </figure>
+        <figure data-testid="saturday">
+          <MultiCircle
+            rings={overnightRings(new Date(2026, 5, 20, 12))}
+            onSliceClick={onSliceClick}
+          />
+          <figcaption>Saturday</figcaption>
+        </figure>
+      </div>
+    </ThemeProvider>
+  ),
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Each day has exactly one event arc: the overnight event's part in that day.
+    for (const day of ["friday", "saturday"]) {
+      const arcs = within(canvas.getByTestId(day)).getAllByRole("button");
+      await expect(arcs).toHaveLength(1);
+      await userEvent.click(arcs[0]);
+    }
+    const clicked = (args.onSliceClick as ReturnType<typeof fn>).mock.calls.map(
+      ([slice]) => slice as { eventId?: string; degrees: number }
+    );
+    await expect(clicked.map((slice) => slice.eventId)).toEqual([
+      "google:overnight",
+      "google:overnight",
+    ]);
+    // Two hours of a 24-hour day on each side of midnight.
+    for (const slice of clicked) await expect(slice.degrees).toBeCloseTo(30, 6);
+  },
+};
+
 /**
  * Responsive sizing: with a `className` that sets a fluid width, the square
  * viewBox lets the timeline scale to its container instead of a fixed pixel

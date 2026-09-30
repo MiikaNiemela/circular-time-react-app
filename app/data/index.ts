@@ -5,7 +5,6 @@
  * the architecture's strict boundaries — into provider internals.
  */
 export type { TimeRange, CalendarEvent, CalendarProvider } from "./types";
-export { CalendarCache } from "./cache";
 export type { CacheEntry, KeyValueStorage } from "./cache";
 export { shouldRefresh } from "./refreshPolicy";
 export { eventSlicesForView, eventWindow, EVENT_COLORS } from "./eventSlices";

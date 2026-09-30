@@ -33,11 +33,33 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /**
+ * Returns an event's [start, end) instants for rendering.
+ *
+ * Providers deliver an all-day event as UTC midnight of its calendar date(s).
+ * An all-day event belongs to those dates in the viewer's calendar, so it is
+ * re-anchored to local midnight; otherwise, east or west of UTC it would spill
+ * across a day boundary into the neighbouring day.
+ */
+export function eventInterval(event: CalendarEvent): { start: number; end: number } {
+  const start = new Date(event.start);
+  const end = new Date(event.end);
+  if (!event.allDay) return { start: start.getTime(), end: end.getTime() };
+  const localMidnight = (d: Date) =>
+    new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime();
+  return { start: localMidnight(start), end: localMidnight(end) };
+}
+
+/**
  * Converts a list of events (all assumed to overlap the `window`) into an
  * ordered set of slices that cover the window exactly 360 degrees.
  *
- * Events are sorted by start time. Gaps between events (and before the first /
- * after the last) become free or unknown slices depending on `isFetched`.
+ * Events are sorted by start time and clamped to the window, so an event that
+ * crosses a period boundary renders only its in-period part. The ring is a
+ * single track: where events overlap, a later event continues from where the
+ * earlier one ends, and an event wholly inside an earlier one adds no slice.
+ * That keeps the slices within the period. Gaps between events (and before
+ * the first / after the last) become free or unknown slices depending on
+ * `isFetched`.
  */
 function eventsToSlices(
   events: CalendarEvent[],
@@ -49,16 +71,23 @@ function eventsToSlices(
   const windowMs = windowEnd - windowStart;
   if (windowMs <= 0) return [];
 
-  const sorted = [...events].sort(
-    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
-  );
+  // Order by start, then longest first so a containing event claims the arc
+  // before the events inside it, then by ID so identical intervals render the
+  // same way whatever order the provider or cache returns them in.
+  const sorted = events
+    .map((evt) => ({ evt, key: `${evt.calendarId}:${evt.id}`, ...eventInterval(evt) }))
+    .sort(
+      (a, b) => a.start - b.start || b.end - a.end || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+    );
 
   const slices: Slice[] = [];
   let cursor = windowStart;
 
-  for (const evt of sorted) {
-    const evtStart = clamp(new Date(evt.start).getTime(), windowStart, windowEnd);
-    const evtEnd = clamp(new Date(evt.end).getTime(), windowStart, windowEnd);
+  for (const { evt, start, end } of sorted) {
+    // Clamp to the period, then to the part not already drawn by an earlier
+    // overlapping event, so the ring never exceeds 360 degrees.
+    const evtStart = Math.max(clamp(start, windowStart, windowEnd), cursor);
+    const evtEnd = clamp(end, windowStart, windowEnd);
     if (evtEnd <= evtStart) continue;
 
     if (evtStart > cursor) {
@@ -175,9 +204,8 @@ export function eventSlicesForView({
     new Date(fetchedRange.end).getTime() >= windowEnd;
 
   const overlapping = events.filter((e) => {
-    const s = new Date(e.start).getTime();
-    const en = new Date(e.end).getTime();
-    return en > windowStart && s < windowEnd;
+    const { start, end } = eventInterval(e);
+    return end > windowStart && start < windowEnd;
   });
 
   const slices = eventsToSlices(overlapping, windowStart, windowEnd, isFetched);
