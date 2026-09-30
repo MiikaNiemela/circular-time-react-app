@@ -30,6 +30,11 @@ not calendar access. An account links at most one identity per provider. A
 Google or Microsoft account that already belongs to a different Circular Time
 account is refused; accounts are never merged.
 
+To sign out, open **Settings** and select **Sign out** under **Account**.
+Signing out ends the application session and removes calendar tokens and
+cached events from the browser. Calendar connections and linked sign-in
+accounts stay with the Circular Time account, so signing in again resumes it.
+
 ## Database schema
 
 Prisma schema changes are version-controlled in `prisma/migrations/`. Use

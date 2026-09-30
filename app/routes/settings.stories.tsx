@@ -101,7 +101,8 @@ export const GoogleConnected: Story = {
 
 /**
  * A signed-in account with only a Google sign-in identity. The Sign-in accounts
- * section marks Google as able to sign in and offers Link for Microsoft only.
+ * section marks Google as able to sign in and offers Link for Microsoft only;
+ * the Account section offers Sign out.
  */
 export const SignInAccounts: Story = {
   render: () => (
@@ -119,5 +120,6 @@ export const SignInAccounts: Story = {
     await expect(
       within(list).queryByRole("button", { name: "Link Google account" })
     ).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   },
 };
