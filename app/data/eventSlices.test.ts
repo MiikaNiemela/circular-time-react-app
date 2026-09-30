@@ -320,6 +320,26 @@ describe("cross-boundary events", () => {
     expect(eventSlice(ring, "inner")).toBeUndefined();
   });
 
+  it("renders events that start together the same way in any input order", () => {
+    const inner = event("inner", local(2026, 5, 19, 9), local(2026, 5, 19, 10));
+    const outer = event("outer", local(2026, 5, 19, 9), local(2026, 5, 19, 12));
+    const twinA = event("twin-a", local(2026, 5, 19, 14), local(2026, 5, 19, 15));
+    const twinB = event("twin-b", local(2026, 5, 19, 14), local(2026, 5, 19, 15));
+    const render = (events: CalendarEvent[]) =>
+      eventSlicesForView({ events, fetchedRange: EVER, view: "day", now: NOW }).slices;
+
+    const forward = render([inner, outer, twinA, twinB]);
+    const reversed = render([twinB, twinA, outer, inner]);
+
+    expect(reversed).toEqual(forward);
+    // The containing event claims the shared start; the identical pair
+    // resolves by ID.
+    expect(forward.map((slice) => slice.eventId).filter(Boolean)).toEqual([
+      "google:outer",
+      "google:twin-a",
+    ]);
+  });
+
   it("renders an all-day event on its own calendar date only", () => {
     // Providers deliver all-day events as UTC midnight of the date.
     const allDay: CalendarEvent = {

@@ -71,9 +71,14 @@ function eventsToSlices(
   const windowMs = windowEnd - windowStart;
   if (windowMs <= 0) return [];
 
+  // Order by start, then longest first so a containing event claims the arc
+  // before the events inside it, then by ID so identical intervals render the
+  // same way whatever order the provider or cache returns them in.
   const sorted = events
-    .map((evt) => ({ evt, ...eventInterval(evt) }))
-    .sort((a, b) => a.start - b.start);
+    .map((evt) => ({ evt, key: `${evt.calendarId}:${evt.id}`, ...eventInterval(evt) }))
+    .sort(
+      (a, b) => a.start - b.start || b.end - a.end || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+    );
 
   const slices: Slice[] = [];
   let cursor = windowStart;
