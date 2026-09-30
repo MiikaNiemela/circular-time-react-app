@@ -4,13 +4,11 @@ This document describes the application release path. It does not contain cloud 
 
 ## Development
 
-Pull requests run the test suite, static checks, component checks, and a production build. A successful merge to `main` deploys the exact merge commit to the development environment.
+Pull requests run the test suite, static checks, component checks, and a production build. Branch protection admits a change to `main` only through a reviewed pull request that passes this `Test` check.
 
-The deployment image is tagged with the Git commit SHA. The deployed image therefore identifies the source revision it contains.
+Every commit on `main` is released to the development environment by a pipeline owned by the private operations repository. The pipeline builds the commit with this repository's `Dockerfile`, tags the image with the Git commit SHA, applies the committed Prisma migrations with `prisma migrate deploy`, and then deploys the image. A failed migration stops the release before deployment.
 
-The workflow authenticates to the cloud provider using GitHub Actions OpenID Connect and workload identity federation. It uses a short-lived job identity; no cloud service-account key is stored in the repository.
-
-The public OAuth client IDs used by the browser build are stored as GitHub Actions environment secrets. They are bundled into the browser application at build time, but secret storage prevents accidental disclosure through repository configuration and workflow logs. OAuth client secrets, database credentials, session secrets, and cloud-resource configuration remain outside the repository.
+This repository's workflow therefore needs no cloud identity or environment configuration. The public OAuth client IDs used by the browser build, OAuth client secrets, database credentials, session secrets, and cloud-resource configuration are all supplied by the release pipeline and runtime environment. None of them are stored in this repository.
 
 ## Future production promotion
 

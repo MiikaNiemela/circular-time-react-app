@@ -4,11 +4,12 @@ Server-side database infrastructure. **Never import these files from client-side
 
 ## What lives here
 
-| File                                   | Purpose                                                                                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prismaClient.server.ts`               | Singleton `PrismaClient` instance wired with `@prisma/adapter-pg`. Reused across HMR reloads in dev to avoid exhausting connection limits. |
-| `prismaUserRepository.server.ts`       | Concrete `PrismaUserRepository` implementing the `UserRepository` interface from `app/lib/`.                                               |
-| `prismaEventCacheRepository.server.ts` | Concrete `PrismaEventCacheRepository` implementing the `ServerEventCache` interface from `app/lib/`.                                       |
+| File                                   | Purpose                                                                                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prismaClient.server.ts`               | Singleton `PrismaClient` instance wired with `@prisma/adapter-pg`. Reused across HMR reloads in dev to avoid exhausting connection limits.       |
+| `prismaUserRepository.server.ts`       | Concrete `PrismaUserRepository` implementing the `UserRepository` interface from `app/lib/`.                                                     |
+| `prismaSessionRepository.server.ts`    | Concrete `PrismaSessionRepository` implementing the `SessionRepository` interface from `app/lib/`; stores only SHA-256 hashes of session tokens. |
+| `prismaEventCacheRepository.server.ts` | Concrete `PrismaEventCacheRepository` implementing the `ServerEventCache` interface from `app/lib/`.                                             |
 
 ## Constraints
 
