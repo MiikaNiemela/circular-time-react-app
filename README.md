@@ -31,9 +31,11 @@ Google or Microsoft account that already belongs to a different Circular Time
 account is refused; accounts are never merged.
 
 To sign out, open **Settings** and select **Sign out** under **Account**.
-Signing out ends the application session and removes calendar tokens and
-cached events from the browser. Calendar connections and linked sign-in
-accounts stay with the Circular Time account, so signing in again resumes it.
+Signing out revokes the application session on the server, so a copy of the
+session cookie no longer works. With JavaScript enabled, the browser also
+removes its calendar tokens and cached events. Sign-out never deletes account
+data: calendar connections, linked sign-in accounts, and server-cached events
+stay with the Circular Time account, so signing in again resumes it.
 
 ## Database schema
 

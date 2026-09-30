@@ -1,5 +1,5 @@
 import type { Route } from "./+types/auth.session";
-import { getSession, commitSession } from "../lib/session.server";
+import { getSession, commitSession, destroySession } from "../lib/session.server";
 import { fetchGoogleUserId, fetchOutlookUserId } from "../lib/userInfo.server";
 import { userRepository } from "../lib/userRepository.server";
 
@@ -50,7 +50,11 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Failed to store user identity" }, { status: 503 });
   }
 
-  const session = await getSession(request.headers.get("Cookie"));
+  // Always issue a new session: an existing one is revoked, never reused, so a
+  // token known before sign-in cannot become authenticated (session fixation).
+  const previous = await getSession(request.headers.get("Cookie"));
+  if (previous.id) await destroySession(previous);
+  const session = await getSession(null);
   session.set("userId", userId);
 
   return Response.json({ ok: true }, { headers: { "Set-Cookie": await commitSession(session) } });
