@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
+import type { Route } from "./+types/settings";
+import { isProduction } from "../lib/buildConfig";
 import { DarkModeToggle } from "../components/DarkModeToggle";
 import { startGoogleCalendarConnection, startOutlookCalendarConnection } from "../lib/providerAuth";
 import { GoogleTokenStore } from "../data/providers/google";
@@ -28,6 +30,19 @@ import {
 
 export function meta() {
   return [{ title: "Settings — Circular Time" }];
+}
+
+/**
+ * Settings manages the signed-in account's calendar connections, so it is
+ * only served to an application session. Unauthenticated production requests
+ * are redirected to sign-in before any settings markup is rendered, matching
+ * the timeline route.
+ */
+export async function loader({ request }: Route.LoaderArgs) {
+  const { getUserId } = await import("../lib/session.server");
+  const userId = await getUserId(request);
+  if (!userId && isProduction()) throw redirect("/sign-in");
+  return null;
 }
 
 interface CalendarProvider {

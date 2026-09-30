@@ -13,7 +13,13 @@ const tokenStoreMocks = vi.hoisted(() => ({
   outlookToken: null as { accessToken: string; expiresAt?: number } | null,
 }));
 
+const serverMocks = vi.hoisted(() => ({ getUserId: vi.fn() }));
+
 vi.mock("../lib/providerAuth", () => providerAuthMocks);
+// buildConfig is mocked so tests can toggle isProduction without patching
+// import.meta.env; the session module is server-only and imported by the loader.
+vi.mock("../lib/buildConfig", () => ({ isProduction: vi.fn(() => false) }));
+vi.mock("../lib/session.server", () => ({ getUserId: serverMocks.getUserId }));
 vi.mock("../data/providers/google", () => ({
   GoogleTokenStore: class {
     get() {
@@ -41,7 +47,8 @@ vi.mock("../data/providers/outlook", () => ({
   },
 }));
 
-import Settings from "./settings";
+import Settings, { loader } from "./settings";
+import { isProduction } from "../lib/buildConfig";
 import { ThemeProvider } from "../components/ThemeProvider";
 
 function renderSettings() {
@@ -163,5 +170,40 @@ describe("Settings route", () => {
     const { getByRole } = renderSettings();
     const backLink = getByRole("link", { name: /back/i });
     expect(backLink.getAttribute("href")).toBe("/");
+  });
+});
+
+describe("Settings route — server auth gate", () => {
+  beforeEach(() => {
+    vi.mocked(isProduction).mockReturnValue(false);
+  });
+
+  it("redirects unauthenticated production requests to sign-in", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(true);
+    const request = new Request("http://localhost/settings");
+
+    const result = loader({ request } as Parameters<typeof loader>[0]);
+
+    await expect(result).rejects.toMatchObject({ status: 302 });
+    await result.catch((response: Response) => {
+      expect(response.headers.get("Location")).toBe("/sign-in");
+    });
+  });
+
+  it("serves settings to an authenticated production session", async () => {
+    serverMocks.getUserId.mockResolvedValue("user-1");
+    vi.mocked(isProduction).mockReturnValue(true);
+    const request = new Request("http://localhost/settings");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toBeNull();
+  });
+
+  it("keeps settings reachable without a session in development", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(false);
+    const request = new Request("http://localhost/settings");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toBeNull();
   });
 });
