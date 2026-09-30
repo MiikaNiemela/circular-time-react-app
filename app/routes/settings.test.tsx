@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router";
 const providerAuthMocks = vi.hoisted(() => ({
   startGoogleCalendarConnection: vi.fn(),
   startOutlookCalendarConnection: vi.fn(),
+  startGoogleIdentityLink: vi.fn(),
+  startOutlookIdentityLink: vi.fn(),
   fetch: vi.fn(),
 }));
 
@@ -13,13 +15,16 @@ const tokenStoreMocks = vi.hoisted(() => ({
   outlookToken: null as { accessToken: string; expiresAt?: number } | null,
 }));
 
-const serverMocks = vi.hoisted(() => ({ getUserId: vi.fn() }));
+const serverMocks = vi.hoisted(() => ({ getUserId: vi.fn(), getSignInProviders: vi.fn() }));
 
 vi.mock("../lib/providerAuth", () => providerAuthMocks);
 // buildConfig is mocked so tests can toggle isProduction without patching
 // import.meta.env; the session module is server-only and imported by the loader.
 vi.mock("../lib/buildConfig", () => ({ isProduction: vi.fn(() => false) }));
 vi.mock("../lib/session.server", () => ({ getUserId: serverMocks.getUserId }));
+vi.mock("../lib/userRepository.server", () => ({
+  userRepository: { getSignInProviders: serverMocks.getSignInProviders },
+}));
 vi.mock("../data/providers/google", () => ({
   GoogleTokenStore: class {
     get() {
@@ -51,11 +56,12 @@ import Settings, { loader } from "./settings";
 import { isProduction } from "../lib/buildConfig";
 import { ThemeProvider } from "../components/ThemeProvider";
 
-function renderSettings() {
+function renderSettings(signInProviders?: string[]) {
+  const loaderData = signInProviders ? { signInProviders } : null;
   return render(
     <MemoryRouter>
       <ThemeProvider>
-        <Settings />
+        <Settings {...({ loaderData } as unknown as Parameters<typeof Settings>[0])} />
       </ThemeProvider>
     </MemoryRouter>
   );
@@ -173,6 +179,41 @@ describe("Settings route", () => {
   });
 });
 
+describe("Settings route — sign-in accounts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    providerAuthMocks.startGoogleIdentityLink.mockResolvedValue(
+      "https://accounts.google.com/oauth"
+    );
+    providerAuthMocks.startOutlookIdentityLink.mockResolvedValue(
+      "https://login.microsoftonline.com/oauth"
+    );
+  });
+
+  it("shows which providers can sign in and offers Link only for the others", () => {
+    const { getByRole, getByText, queryByRole } = renderSettings(["google"]);
+    const list = getByRole("list", { name: "Sign-in accounts" });
+    expect(list.textContent).toContain("Can sign in to this account");
+    expect(getByText("Not linked")).toBeTruthy();
+    expect(queryByRole("button", { name: "Link Google account" })).toBeNull();
+    expect(getByRole("button", { name: "Link Microsoft (Outlook) account" })).toBeTruthy();
+  });
+
+  it("starts an identity-only link flow instead of a calendar connection", async () => {
+    const { getByRole } = renderSettings(["google"]);
+    fireEvent.click(getByRole("button", { name: "Link Microsoft (Outlook) account" }));
+
+    await waitFor(() => expect(providerAuthMocks.startOutlookIdentityLink).toHaveBeenCalledOnce());
+    expect(providerAuthMocks.startOutlookCalendarConnection).not.toHaveBeenCalled();
+  });
+
+  it("hides the section without an application session", () => {
+    const { queryByRole } = renderSettings();
+    expect(queryByRole("list", { name: "Sign-in accounts" })).toBeNull();
+  });
+});
+
 describe("Settings route — server auth gate", () => {
   beforeEach(() => {
     vi.mocked(isProduction).mockReturnValue(false);
@@ -191,12 +232,16 @@ describe("Settings route — server auth gate", () => {
     });
   });
 
-  it("serves settings to an authenticated production session", async () => {
+  it("serves settings with the account's sign-in providers to an authenticated session", async () => {
     serverMocks.getUserId.mockResolvedValue("user-1");
+    serverMocks.getSignInProviders.mockResolvedValue(["google"]);
     vi.mocked(isProduction).mockReturnValue(true);
     const request = new Request("http://localhost/settings");
 
-    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toBeNull();
+    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toEqual({
+      signInProviders: ["google"],
+    });
+    expect(serverMocks.getSignInProviders).toHaveBeenCalledWith("user-1");
   });
 
   it("keeps settings reachable without a session in development", async () => {

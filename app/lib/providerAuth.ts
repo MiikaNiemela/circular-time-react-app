@@ -84,6 +84,42 @@ export async function startOutlookSignIn({ returnTo = "/" }: StartSignInOptions 
 }
 
 /**
+ * Starts an identity-only Google flow that links a Google account to the
+ * signed-in application account, so it can also be used to sign in.
+ */
+export async function startGoogleIdentityLink(): Promise<string | null> {
+  if (!isGoogleConfigured()) return null;
+  const url = await startGoogleAuth({
+    clientId: GOOGLE_CLIENT_ID,
+    redirectUri: googleRedirectUri(window.location.origin),
+    scope: GOOGLE_IDENTITY_SCOPE,
+  });
+  return bindPostAuthFlow(url, {
+    intent: "link-identity",
+    returnTo: "/settings",
+    provider: "google",
+  });
+}
+
+/**
+ * Starts an identity-only Outlook flow that links a Microsoft account to the
+ * signed-in application account, so it can also be used to sign in.
+ */
+export async function startOutlookIdentityLink(): Promise<string | null> {
+  if (!isOutlookConfigured()) return null;
+  const url = await startOutlookAuth({
+    clientId: OUTLOOK_CLIENT_ID,
+    redirectUri: outlookRedirectUri(window.location.origin),
+    scope: OUTLOOK_IDENTITY_SCOPE,
+  });
+  return bindPostAuthFlow(url, {
+    intent: "link-identity",
+    returnTo: "/settings",
+    provider: "outlook",
+  });
+}
+
+/**
  * Starts an explicit Google calendar-connection flow for the signed-in account.
  * The requested scopes include identity claims, because the server must verify
  * the provider identity before it marks the calendar as connected.

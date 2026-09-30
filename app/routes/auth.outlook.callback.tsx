@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from "react-router";
 import { completeOutlookAuth, OutlookTokenStore } from "../data/providers/outlook";
 import { OUTLOOK_CLIENT_ID, outlookRedirectUri } from "../data/providers/outlook/config";
 import { consumePostAuthRedirect } from "../lib/authState";
+import { OAUTH_ENDPOINTS, responseError } from "../lib/oauthCompletion";
 
 export function meta() {
-  return [{ title: "Connecting Outlook…" }];
+  return [{ title: "Completing Outlook authorization…" }];
 }
 
 export default function OutlookCallback() {
@@ -48,7 +49,7 @@ export default function OutlookCallback() {
       persistTokens: false,
     })
       .then(async (tokens) => {
-        const endpoint = flow.intent === "sign-in" ? "/auth/session" : "/auth/calendar-connection";
+        const endpoint = OAUTH_ENDPOINTS[flow.intent];
         const body =
           flow.intent === "sign-in"
             ? { intent: flow.intent, provider: "outlook", accessToken: tokens.accessToken }
@@ -59,7 +60,7 @@ export default function OutlookCallback() {
           body: JSON.stringify(body),
         });
         if (!response.ok) {
-          throw new Error("Unable to establish the application session.");
+          throw new Error(await responseError(response, flow.intent));
         }
         if (flow.intent === "connect-calendar") {
           const result: unknown = await response.json();
@@ -81,12 +82,12 @@ export default function OutlookCallback() {
     <main style={{ padding: "2rem", textAlign: "center" }}>
       {error ? (
         <>
-          <p>Could not connect Outlook Calendar.</p>
+          <p>Outlook authorization did not complete.</p>
           <p>{error}</p>
           <a href="/settings">Back to settings</a>
         </>
       ) : (
-        <p>Connecting Outlook Calendar…</p>
+        <p>Completing Outlook authorization…</p>
       )}
     </main>
   );

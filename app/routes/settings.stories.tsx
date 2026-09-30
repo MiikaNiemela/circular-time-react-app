@@ -22,6 +22,16 @@ const SettingsStub = createRoutesStub([
   { path: "/settings", Component: Settings },
 ]);
 
+/** Settings for a signed-in account whose Google identity can sign in. */
+const SignedInSettingsStub = createRoutesStub([
+  { path: "/", Component: HomeStub },
+  {
+    path: "/settings",
+    Component: Settings as never,
+    loader: () => ({ signInProviders: ["google"] }),
+  },
+]);
+
 function renderSettings() {
   return (
     <ThemeProvider>
@@ -86,5 +96,28 @@ export const GoogleConnected: Story = {
     expect(checkbox).not.toBeChecked();
     await userEvent.click(label);
     expect(checkbox).toBeChecked();
+  },
+};
+
+/**
+ * A signed-in account with only a Google sign-in identity. The Sign-in accounts
+ * section marks Google as able to sign in and offers Link for Microsoft only.
+ */
+export const SignInAccounts: Story = {
+  render: () => (
+    <ThemeProvider>
+      <SignedInSettingsStub initialEntries={["/settings"]} />
+    </ThemeProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const list = await canvas.findByRole("list", { name: "Sign-in accounts" });
+    await expect(within(list).getByText("Can sign in to this account")).toBeInTheDocument();
+    await expect(
+      within(list).getByRole("button", { name: "Link Microsoft (Outlook) account" })
+    ).toBeInTheDocument();
+    await expect(
+      within(list).queryByRole("button", { name: "Link Google account" })
+    ).not.toBeInTheDocument();
   },
 };

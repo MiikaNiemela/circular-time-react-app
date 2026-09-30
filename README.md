@@ -23,6 +23,13 @@ signed-in Circular Time account and returns to Settings. Calendar connections
 are stored separately from identities that create application sessions, so a
 calendar connection cannot create or merge application accounts.
 
+One Circular Time account can be signed in to with both a Google and a
+Microsoft account. While signed in, open **Settings** and select **Link** under
+**Sign-in accounts** to add the other provider. Linking asks only for identity,
+not calendar access. An account links at most one identity per provider. A
+Google or Microsoft account that already belongs to a different Circular Time
+account is refused; accounts are never merged.
+
 ## Database schema
 
 Prisma schema changes are version-controlled in `prisma/migrations/`. Use
