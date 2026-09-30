@@ -180,6 +180,15 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
     );
   }
 
+  // Browser-held calendar tokens and cached events belong to this account; drop
+  // them before the form clears the server session, so the next person to use
+  // this browser starts clean. Server-side connections and identities remain.
+  function clearBrowserAccountData() {
+    new GoogleTokenStore().clear();
+    new OutlookTokenStore().clear();
+    new CalendarCache().clear();
+  }
+
   async function linkIdentity(id: string) {
     const url =
       id === "google" ? await startGoogleIdentityLink() : await startOutlookIdentityLink();
@@ -281,6 +290,17 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
             </li>
           ))}
         </ul>
+
+        {signInProviders && (
+          <>
+            <h2 className={sectionTitle}>Account</h2>
+            <form method="post" action="/auth/sign-out" onSubmit={clearBrowserAccountData}>
+              <button type="submit" className={disconnectButton}>
+                Sign out
+              </button>
+            </form>
+          </>
+        )}
       </main>
     </div>
   );

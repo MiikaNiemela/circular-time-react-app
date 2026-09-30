@@ -214,6 +214,45 @@ describe("Settings route — sign-in accounts", () => {
   });
 });
 
+describe("Settings route — sign out", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tokenStoreMocks.googleToken = null;
+    tokenStoreMocks.outlookToken = null;
+  });
+
+  it("posts a sign-out form to the session endpoint", () => {
+    const { getByRole } = renderSettings(["google"]);
+    const button = getByRole("button", { name: "Sign out" }) as HTMLButtonElement;
+
+    expect(button.type).toBe("submit");
+    expect(button.form?.getAttribute("method")).toBe("post");
+    expect(button.form?.getAttribute("action")).toBe("/auth/sign-out");
+  });
+
+  it("clears browser calendar tokens and cached events before signing out", () => {
+    tokenStoreMocks.googleToken = { accessToken: "google-at" };
+    tokenStoreMocks.outlookToken = { accessToken: "outlook-at" };
+    localStorage.setItem("circular-time-cache", JSON.stringify({ google: {} }));
+    const { getByRole } = renderSettings(["google"]);
+    const form = (getByRole("button", { name: "Sign out" }) as HTMLButtonElement).form!;
+    // jsdom does not implement navigation; stop the submission after handlers run.
+    form.addEventListener("submit", (event) => event.preventDefault());
+
+    fireEvent.submit(form);
+
+    expect(tokenStoreMocks.googleToken).toBeNull();
+    expect(tokenStoreMocks.outlookToken).toBeNull();
+    expect(localStorage.getItem("circular-time-cache")).toBeNull();
+  });
+
+  it("offers no sign-out without an application session", () => {
+    const { queryByRole } = renderSettings();
+    expect(queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+});
+
 describe("Settings route — server auth gate", () => {
   beforeEach(() => {
     vi.mocked(isProduction).mockReturnValue(false);
