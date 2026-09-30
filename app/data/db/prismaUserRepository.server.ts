@@ -36,13 +36,15 @@ export class PrismaUserRepository {
   /**
    * Links a provider identity to an existing application account. A provider
    * identity may belong to only one account, so a pre-existing different owner
-   * is reported without creating or merging accounts.
+   * is reported without creating or merging accounts. The account's own
+   * calendar connection for the same identity proves the same person holds it,
+   * so it does not block linking; another account's connection does.
    */
   async linkProviderAccount(
     userId: string,
     provider: string,
     providerUserId: string
-  ): Promise<"linked" | "conflict"> {
+  ): Promise<"linked" | "conflict" | "provider-already-linked"> {
     try {
       return await this.runSerializable(async (tx) => {
         const existingAccount = await tx.providerAccount.findUnique({
@@ -53,17 +55,24 @@ export class PrismaUserRepository {
 
         const calendarConnection = await tx.calendarConnection.findUnique({
           where: { provider_providerUserId: { provider, providerUserId } },
+          select: { userId: true },
+        });
+        if (calendarConnection && calendarConnection.userId !== userId) return "conflict";
+
+        const sameProviderIdentity = await tx.providerAccount.findUnique({
+          where: { userId_provider: { userId, provider } },
           select: { id: true },
         });
-        if (calendarConnection) return "conflict";
+        if (sameProviderIdentity) return "provider-already-linked";
 
-        const account = await tx.providerAccount.create({
+        await tx.providerAccount.create({
           data: { provider, providerUserId, userId },
           select: { userId: true },
         });
-        return account.userId === userId ? "linked" : "conflict";
+        return "linked";
       });
     } catch (error: unknown) {
+      // A concurrent link for the same identity or provider won the race.
       if (isUniqueConstraintError(error)) return "conflict";
       throw error;
     }
@@ -77,7 +86,8 @@ export class PrismaUserRepository {
   async connectCalendarProvider(
     userId: string,
     provider: string,
-    providerUserId: string
+    providerUserId: string,
+    sealCredential: (calendarConnectionId: string) => string
   ): Promise<"connected" | "conflict"> {
     try {
       return await this.runSerializable(async (tx) => {
@@ -89,9 +99,22 @@ export class PrismaUserRepository {
           where: { provider_providerUserId: { provider, providerUserId } },
           update: {},
           create: { provider, providerUserId, userId },
-          select: { userId: true },
+          select: { id: true, userId: true },
         });
-        return connection.userId === userId ? "connected" : "conflict";
+        if (connection.userId !== userId) return "conflict";
+        // Stored in the same transaction, so a failed credential write also
+        // rolls back a newly created connection: a calendar is never shown as
+        // connected without a usable credential.
+        const ciphertext = sealCredential(connection.id);
+        await tx.calendarCredential.upsert({
+          where: {
+            calendarConnectionId_userId: { calendarConnectionId: connection.id, userId },
+          },
+          create: { calendarConnectionId: connection.id, userId, ciphertext },
+          update: { ciphertext },
+          select: { calendarConnectionId: true },
+        });
+        return "connected";
       });
     } catch (error: unknown) {
       // The user already has a different identity for this provider, or the
@@ -148,6 +171,16 @@ export class PrismaUserRepository {
       where: { userId },
       select: { id: true, provider: true, providerUserId: true },
     });
+  }
+
+  /** Lists the providers whose identities can sign in to the application account. */
+  async getSignInProviders(userId: string): Promise<string[]> {
+    const accounts = await this.db.providerAccount.findMany({
+      where: { userId },
+      select: { provider: true },
+      orderBy: { createdAt: "asc" },
+    });
+    return accounts.map((account) => account.provider);
   }
 
   /** Lists the calendar providers explicitly connected by the user. */
