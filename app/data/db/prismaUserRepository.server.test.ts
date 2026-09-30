@@ -12,6 +12,7 @@ describe("PrismaUserRepository", () => {
   let calendarConnectionFindUnique: ReturnType<typeof vi.fn>;
   let update: ReturnType<typeof vi.fn>;
   let calendarConnectionDeleteMany: ReturnType<typeof vi.fn>;
+  let calendarCredentialUpsert: ReturnType<typeof vi.fn>;
   let deleteMany: ReturnType<typeof vi.fn>;
   let transaction: ReturnType<typeof vi.fn>;
   let repo: PrismaUserRepository;
@@ -26,6 +27,7 @@ describe("PrismaUserRepository", () => {
     calendarConnectionFindUnique = vi.fn();
     update = vi.fn();
     calendarConnectionDeleteMany = vi.fn();
+    calendarCredentialUpsert = vi.fn();
     deleteMany = vi.fn();
     transaction = vi.fn(async (callback: (tx: unknown) => unknown) =>
       callback({
@@ -39,6 +41,7 @@ describe("PrismaUserRepository", () => {
           deleteMany: calendarConnectionDeleteMany,
         },
         cachedEventRange: { deleteMany },
+        calendarCredential: { upsert: calendarCredentialUpsert },
       })
     );
     const db = {
@@ -147,32 +150,89 @@ describe("PrismaUserRepository", () => {
         },
         select: { userId: true },
       });
+      expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: "Serializable",
+      });
     });
 
-    it("reports a conflict when the provider identity belongs to another user", async () => {
-      providerAccountFindUnique.mockResolvedValue({ userId: "other-user-uuid" });
+    it("is idempotent when the identity is already linked to the same user", async () => {
+      providerAccountFindUnique.mockResolvedValue({ userId: "user-uuid" });
 
       await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
-        "conflict"
+        "linked"
       );
+      expect(providerAccountCreate).not.toHaveBeenCalled();
     });
 
-    it("does not turn a calendar-only identity into an application sign-in identity", async () => {
-      providerAccountFindUnique.mockResolvedValue(null);
-      calendarConnectionFindUnique.mockResolvedValue({ id: "connection-uuid" });
+    it("reports a conflict and never merges when the identity belongs to another user", async () => {
+      providerAccountFindUnique.mockResolvedValue({ userId: "other-user-uuid" });
 
       await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
         "conflict"
       );
       expect(providerAccountCreate).not.toHaveBeenCalled();
     });
+
+    it("reports a conflict when another user has the identity as a calendar connection", async () => {
+      providerAccountFindUnique.mockResolvedValue(null);
+      calendarConnectionFindUnique.mockResolvedValue({ userId: "other-user-uuid" });
+
+      await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
+        "conflict"
+      );
+      expect(providerAccountCreate).not.toHaveBeenCalled();
+    });
+
+    it("links an identity the same user already connected as a calendar", async () => {
+      providerAccountFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      calendarConnectionFindUnique.mockResolvedValue({ userId: "user-uuid" });
+      providerAccountCreate.mockResolvedValue({ userId: "user-uuid" });
+
+      await expect(
+        repo.linkProviderAccount("user-uuid", "outlook", "outlook-id-abc")
+      ).resolves.toBe("linked");
+      expect(providerAccountCreate).toHaveBeenCalledOnce();
+    });
+
+    it("rejects a second identity from a provider the account already links", async () => {
+      providerAccountFindUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "existing-google-identity" });
+      calendarConnectionFindUnique.mockResolvedValue(null);
+
+      await expect(
+        repo.linkProviderAccount("user-uuid", "google", "second-google-sub")
+      ).resolves.toBe("provider-already-linked");
+      expect(providerAccountFindUnique).toHaveBeenLastCalledWith({
+        where: { userId_provider: { userId: "user-uuid", provider: "google" } },
+        select: { id: true },
+      });
+      expect(providerAccountCreate).not.toHaveBeenCalled();
+    });
+
+    it("reports a conflict when a concurrent link wins the unique constraint", async () => {
+      providerAccountFindUnique.mockResolvedValue(null);
+      calendarConnectionFindUnique.mockResolvedValue(null);
+      providerAccountCreate.mockRejectedValue({ code: "P2002" });
+
+      await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
+        "conflict"
+      );
+    });
   });
 
   describe("connectCalendarProvider", () => {
-    it("creates a separate calendar connection without creating a sign-in identity", async () => {
-      calendarConnectionUpsert.mockResolvedValue({ userId: "user-uuid" });
+    const seal = (connectionId: string) => `sealed-for-${connectionId}`;
 
-      const result = await repo.connectCalendarProvider("user-uuid", "outlook", "outlook-id-abc");
+    it("creates a calendar connection and its sealed credential in one serializable transaction", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "user-uuid" });
+
+      const result = await repo.connectCalendarProvider(
+        "user-uuid",
+        "outlook",
+        "outlook-id-abc",
+        seal
+      );
 
       expect(result).toBe("connected");
       expect(calendarConnectionUpsert).toHaveBeenCalledWith({
@@ -185,7 +245,19 @@ describe("PrismaUserRepository", () => {
           providerUserId: "outlook-id-abc",
           userId: "user-uuid",
         },
-        select: { userId: true },
+        select: { id: true, userId: true },
+      });
+      expect(calendarCredentialUpsert).toHaveBeenCalledWith({
+        where: {
+          calendarConnectionId_userId: { calendarConnectionId: "conn-1", userId: "user-uuid" },
+        },
+        create: {
+          calendarConnectionId: "conn-1",
+          userId: "user-uuid",
+          ciphertext: "sealed-for-conn-1",
+        },
+        update: { ciphertext: "sealed-for-conn-1" },
+        select: { calendarConnectionId: true },
       });
       expect(providerAccountFindUnique).toHaveBeenCalledWith({
         where: {
@@ -193,25 +265,38 @@ describe("PrismaUserRepository", () => {
         },
         select: { id: true },
       });
+      expect(transaction).toHaveBeenCalledOnce();
       expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
         isolationLevel: "Serializable",
       });
       expect(upsert).not.toHaveBeenCalled();
     });
 
-    it("does not connect a calendar identity already linked to another application account", async () => {
-      calendarConnectionUpsert.mockResolvedValue({ userId: "other-user-uuid" });
+    it("fails the whole transaction when the credential cannot be stored", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "user-uuid" });
+      calendarCredentialUpsert.mockRejectedValue(new Error("database unavailable"));
 
       await expect(
-        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123")
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
+      ).rejects.toThrow("database unavailable");
+      // Both writes ran inside the one transaction, so PostgreSQL rolls back the connection.
+      expect(transaction).toHaveBeenCalledOnce();
+    });
+
+    it("does not connect a calendar identity already linked to another application account", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "other-user-uuid" });
+
+      await expect(
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
       ).resolves.toBe("conflict");
+      expect(calendarCredentialUpsert).not.toHaveBeenCalled();
     });
 
     it("reports a conflict when a unique calendar connection cannot be created", async () => {
       calendarConnectionUpsert.mockRejectedValue({ code: "P2002" });
 
       await expect(
-        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123")
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
       ).resolves.toBe("conflict");
     });
   });
@@ -276,6 +361,19 @@ describe("PrismaUserRepository", () => {
       expect(calendarConnectionFindMany).toHaveBeenCalledWith({
         where: { userId: "user-uuid" },
         select: { id: true, provider: true, providerUserId: true },
+      });
+    });
+  });
+
+  describe("getSignInProviders", () => {
+    it("lists the providers whose identities sign in to the account, oldest first", async () => {
+      findMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);
+
+      await expect(repo.getSignInProviders("user-uuid")).resolves.toEqual(["google", "outlook"]);
+      expect(findMany).toHaveBeenCalledWith({
+        where: { userId: "user-uuid" },
+        select: { provider: true },
+        orderBy: { createdAt: "asc" },
       });
     });
   });

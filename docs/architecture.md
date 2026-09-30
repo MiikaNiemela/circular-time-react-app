@@ -6,8 +6,9 @@ The design carries over the three-layer separation from the original app's [arch
 
 ## Core principles
 
-- **Server-authoritative cache.** The timeline renders from a per-user event cache on the server, read through a route loader. The browser only calls provider APIs to warm a cold cache, then hands the result back to the server. Past data is never discarded automatically.
-- **Identity before persistence.** A signed session maps each request to a stable user ID, so server-side data is keyed per user rather than per device.
+- **Server-authoritative cache.** The timeline renders from a per-user event cache on the server, read through a route loader. The server fetches missing or stale windows from the provider with the account's stored credentials. Past data is never discarded automatically.
+- **Server-side credential custody.** The server runs the OAuth flows and holds provider tokens, encrypted in the database. The browser never receives a provider token or client secret.
+- **Identity before persistence.** A server-side session maps each request to a stable user ID, so server-side data is keyed per user rather than per device.
 - **Clear layer boundaries.** UI components never talk to calendar APIs directly; they go through a data layer.
 - **Component isolation.** Every UI component is buildable and testable in Storybook with no app context.
 - **Extraction-ready core.** The circular timeline is designed so it can be lifted into a standalone library with minimal change (see [issue #2](https://github.com/MiikaNiemela/circular-time-app/issues/2)).
@@ -30,9 +31,9 @@ The three layers and their boundaries are unchanged; the server-side work added 
 
 **UI layer.** React Router routes (sign-in, timeline, settings, OAuth callbacks) and presentational components. The centrepiece is the circular timeline component, which is purely presentational: given slices, it draws them. It holds no knowledge of calendars. The timeline route reads its events from a server `loader` rather than fetching on render.
 
-**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity: a signed, HTTP-only session cookie maps each request to a stable user ID, anchoring server-side data to a user rather than a device.
+**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity. The server runs each OAuth flow end to end and keeps the provider tokens of connected calendars, encrypted with AES-256-GCM and bound to their user and connection, refreshing them when they expire. A signed, HTTP-only cookie carries an opaque session token that the server resolves to a stable user ID on each request, anchoring server-side data to a user rather than a device. Sessions are stored server-side, so signing out revokes them.
 
-**Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus two repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range) and the user store (application sign-in identities and separate calendar connections). Each cached range is linked to an active calendar connection, so the database removes linked ranges when that connection is deleted. The server cache is the source of truth the UI reads from; the browser-side provider fetch exists only to populate it.
+**Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range), the user store (application sign-in identities, of which an account may link one per provider, and separate calendar connections), and encrypted calendar credentials. Each cached range and credential is linked to an active calendar connection, so the database removes them when that connection is deleted. The server cache is the source of truth the UI reads from.
 
 ## Component model (timeline core)
 
@@ -50,30 +51,31 @@ The API questions tracked in issue #2 are resolved in [decisions/timeline-api.md
 
 ## Data flow: rendering the timeline
 
-The loader serves from the server cache; a cold cache is warmed by a one-time client fetch that posts results back through the route action, after which React Router revalidates the loader.
+The loader reads each connected calendar through the server cache. Fresh windows come from the database; stale or missing ones are fetched from the provider with the account's stored credentials and cached. When a calendar cannot be read, the loader serves what is cached and the page prompts a reconnect.
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant L as Server loader/action
+    participant L as Server loader
     participant DB as Server event cache
-    participant CL as Client (hook + provider)
+    participant CR as Credential store
     participant API as Calendar provider
 
     U->>L: Open timeline (session → userId)
-    L->>DB: Read cached events for user + window
-    alt Cache warm
+    L->>DB: Read cached windows for user + range
+    alt All windows fresh
         DB->>L: Cached events
-        L->>U: Render MultiCircle (slices per ring)
-    else Cache cold / window uncovered
-        DB->>L: Partial / none
-        L->>U: Render with optimistic client data
-        CL->>API: Fetch missing window (browser token)
-        API->>CL: Events
-        CL->>L: POST events to action
-        L->>DB: Store, then revalidate loader
+    else Window stale or missing
+        L->>CR: Access token (refresh if expiring)
+        CR->>L: Decrypted token
+        L->>API: Fetch window
+        API->>L: Events
+        L->>DB: Store window
     end
+    L->>U: Render MultiCircle (slices per ring)
 ```
+
+The server runs in UTC and does not know the browser's time zone, so it reads a range one day wider on each side than the view; the browser clips events to its local view window.
 
 ## Styling & theming
 
@@ -93,17 +95,13 @@ The application runs as a Node.js SSR server through `react-router-serve` in a c
 
 User records and cached calendar events live in a PostgreSQL database through Prisma and `@prisma/adapter-pg`. Schema changes are version-controlled in the Prisma migration history. The deployment environment supplies `DATABASE_URL` and `SESSION_SECRET`; neither value is baked into an image. Business logic reaches the database only through repository interfaces, so the concrete driver remains replaceable.
 
-### Google OAuth
+### OAuth and provider credentials
 
-Google's web OAuth client uses a confidential client secret for its server-side token exchange. The browser never receives that secret. The `/auth/google/token` route retrieves it through the runtime environment's secret-management integration, and caches it in-process for each container instance.
+Google and Microsoft are registered as confidential web clients. The server starts each flow from a same-origin form post, keeps the PKCE verifier and state in a signed, HTTP-only, ten-minute cookie, and redeems the authorization code with the client secret. Sign-in and account linking use identity scopes only and store no provider tokens; a calendar connection also stores the provider's access and refresh tokens.
 
-The deployment environment supplies the public Google client ID separately. The public client ID is included in the browser build; the client secret remains server-side.
-
-### Outlook OAuth
-
-Microsoft's identity platform supports a public SPA client. The browser performs the authorization-code and PKCE token exchange directly, with no client secret.
-
-The Outlook app registration must define the environment's callback under the Single-page application platform and grant the delegated calendar, offline-access, OpenID, and profile permissions used by the application. The public Outlook client ID is supplied as build configuration.
+- Client secrets are read at runtime from the deployment environment's secret manager by resource name (`GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE`) and cached in-process.
+- Stored provider tokens are encrypted with AES-256-GCM under `TOKEN_ENCRYPTION_KEY`, one application-scoped key. Each ciphertext is bound to its user and calendar connection as additional authenticated data, so it cannot be decrypted in another row. Rotating the key makes stored tokens unreadable, and the affected calendars need to be reconnected.
+- The public client IDs are build configuration. Each app registration lists `<origin>/auth/<provider>/callback` as a web redirect URI, and the Microsoft registration also grants the delegated calendar, offline-access, OpenID, and profile permissions.
 
 ## Testing strategy
 

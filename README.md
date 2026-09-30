@@ -19,9 +19,24 @@ data.
 To read calendar events, open **Settings** and select **Connect** next to
 Google Calendar or Outlook / Microsoft 365. The provider then asks separately
 for calendar-read permission. On approval, the calendar is connected to the
-signed-in Circular Time account and returns to Settings. Calendar connections
-are stored separately from identities that create application sessions, so a
-calendar connection cannot create or merge application accounts.
+signed-in Circular Time account and returns to Settings. The server keeps the
+calendar's access tokens, encrypted, and reads events on your behalf; the
+browser never holds them. Calendar connections are stored separately from
+identities that create application sessions, so a calendar connection cannot
+create or merge application accounts.
+
+One Circular Time account can be signed in to with both a Google and a
+Microsoft account. While signed in, open **Settings** and select **Link** under
+**Sign-in accounts** to add the other provider. Linking asks only for identity,
+not calendar access. An account links at most one identity per provider. A
+Google or Microsoft account that already belongs to a different Circular Time
+account is refused; accounts are never merged.
+
+To sign out, open **Settings** and select **Sign out** under **Account**.
+Signing out revokes the application session on the server, so a copy of the
+session cookie no longer works. Sign-out never deletes account
+data: calendar connections, linked sign-in accounts, and server-cached events
+stay with the Circular Time account, so signing in again resumes it.
 
 ## Database schema
 
@@ -77,7 +92,7 @@ Each piece of work is scoped to land as **one releasable item**: a tested module
 ### Project layout
 
 - `app/root.tsx` is the root layout and error boundary.
-- `app/routes.ts` defines the route contract; the route modules live in `app/routes/` (timeline, settings, sign-in, and the OAuth callback/token routes).
+- `app/routes.ts` defines the route contract; the route modules live in `app/routes/` (timeline, settings, sign-in, and the OAuth start/callback routes).
 - `app/components/` holds shared React components, including the extraction-ready circular timeline in `app/components/timeline/`.
 - `app/lib/` holds the business logic — timeline math, refresh policy, auth orchestration — with a co-located unit test per module.
 - `app/data/` holds the data layer: calendar providers (`app/data/providers/`) and server-side database access (`app/data/db/`).

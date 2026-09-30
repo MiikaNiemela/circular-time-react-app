@@ -1,48 +1,118 @@
 /**
- * HTTP-only signed session cookie for server-side user identity.
+ * Server-side application sessions behind an HTTP-only signed cookie.
  *
- * After a successful OAuth exchange the client POSTs to /auth/session, which
- * calls getUserId to read the resulting cookie on every subsequent request.
- * SESSION_SECRET must be set in production; a fixed fallback is used in dev so
- * server restarts don't invalidate sessions.
+ * The cookie carries only an opaque random token. Each request resolves the
+ * token against the session store, so signing out revokes the session on the
+ * server: a copy of the cookie taken earlier no longer authenticates.
+ * SESSION_SECRET signs the cookie and must be set in production; a fixed
+ * fallback is used in development.
  */
-import { createCookieSessionStorage } from "react-router";
+import { createCookie, createSessionStorage, type SessionStorage } from "react-router";
+import type { SessionRepository } from "./sessionRepository";
 
 type SessionData = {
   /** Stable database user ID (UUID) assigned on first sign-in. */
   userId: string;
 };
 
+/** Session lifetime, enforced by both the cookie and the server-side record. */
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 const sessionSecret = process.env.SESSION_SECRET;
 if (process.env.NODE_ENV === "production" && !sessionSecret) {
   throw new Error("SESSION_SECRET must be set in production");
 }
 
-const { getSession, commitSession, destroySession } = createCookieSessionStorage<SessionData>({
-  cookie: {
-    name: "__session",
+/** True for a well-formed opaque session token as issued by the repository. */
+function isSessionToken(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * Builds session storage over a repository. Sessions are immutable: a sign-in
+ * always creates a new session, which also prevents session fixation.
+ */
+export function createApplicationSessionStorage(
+  repository: SessionRepository,
+  secret: string,
+  now: () => Date = () => new Date()
+): SessionStorage<SessionData> {
+  const cookie = createCookie("__session", {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    secrets: [sessionSecret ?? "dev-secret-change-in-production"],
+    secrets: [secret],
     // Secure flag on in production; off in dev so http://localhost works.
     secure: process.env.NODE_ENV === "production",
-    maxAge: 30 * 24 * 60 * 60,
-  },
-});
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+
+  return createSessionStorage<SessionData>({
+    cookie,
+    async createData(data) {
+      if (!data.userId) throw new Error("A session requires a userId");
+      // The server-side record is the authority on lifetime; the cookie's own
+      // expiry only tells the browser when to stop sending it.
+      const issuedAt = now();
+      return repository.create(
+        data.userId,
+        new Date(issuedAt.getTime() + SESSION_MAX_AGE_SECONDS * 1000),
+        issuedAt
+      );
+    },
+    async readData(token) {
+      // A cookie signed with the same secret but written by an earlier
+      // session format parses to a non-string value; treat it as signed out.
+      if (!isSessionToken(token)) return null;
+      const userId = await repository.findUserId(token, now());
+      return userId ? { userId } : null;
+    },
+    async updateData() {
+      throw new Error("Application sessions are immutable; create a new session instead");
+    },
+    async deleteData(token) {
+      if (isSessionToken(token)) await repository.revoke(token);
+    },
+  });
+}
+
+async function createDefaultStorage(): Promise<SessionStorage<SessionData>> {
+  const [{ prisma }, { PrismaSessionRepository }] = await Promise.all([
+    import("../data/db/prismaClient.server"),
+    import("../data/db/prismaSessionRepository.server"),
+  ]);
+  const repository: SessionRepository = new PrismaSessionRepository(prisma);
+  return createApplicationSessionStorage(
+    repository,
+    sessionSecret ?? "dev-secret-change-in-production"
+  );
+}
+
+let storage: Promise<SessionStorage<SessionData>> | undefined;
+function sessionStorage(): Promise<SessionStorage<SessionData>> {
+  storage ??= createDefaultStorage();
+  return storage;
+}
 
 /** Parses the session from the incoming Cookie header; returns an empty session when absent. */
-export { getSession };
-/** Serializes session data into a Set-Cookie header value, ready to attach to a Response. */
-export { commitSession };
-/** Produces a Set-Cookie header value that instructs the browser to clear the session cookie. */
-export { destroySession };
+export const getSession: SessionStorage<SessionData>["getSession"] = async (...args) =>
+  (await sessionStorage()).getSession(...args);
+/** Creates the session record and serializes its token into a Set-Cookie header value. */
+export const commitSession: SessionStorage<SessionData>["commitSession"] = async (...args) =>
+  (await sessionStorage()).commitSession(...args);
+/** Revokes the session record and returns a Set-Cookie header value that clears the cookie. */
+export const destroySession: SessionStorage<SessionData>["destroySession"] = async (...args) =>
+  (await sessionStorage()).destroySession(...args);
 
 /**
- * Reads the userId from the session cookie.
- * Returns null when no session exists or the cookie is invalid.
+ * Reads the userId of a live session.
+ * Returns null when no cookie is present, the signature is invalid, or the
+ * session has been revoked or has expired.
  */
 export async function getUserId(request: Request): Promise<string | null> {
-  const session = await getSession(request.headers.get("Cookie"));
+  const cookieHeader = request.headers.get("Cookie");
+  // Avoid a database round trip for anonymous requests.
+  if (!cookieHeader?.includes("__session=")) return null;
+  const session = await getSession(cookieHeader);
   return session.get("userId") ?? null;
 }
