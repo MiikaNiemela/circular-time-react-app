@@ -1,6 +1,5 @@
 import type { Route } from "./+types/sign-in";
 import { redirect } from "react-router";
-import { startGoogleSignIn, startOutlookSignIn } from "../lib/providerAuth";
 import { page, card, heading, subtitle, buttons, providerButton } from "./sign-in.css";
 
 export function meta() {
@@ -15,24 +14,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function SignIn() {
-  async function signInWithGoogle() {
-    const url = await startGoogleSignIn({ returnTo: "/" });
-    if (!url) {
-      alert("Google Calendar is not configured for this build.");
-      return;
-    }
-    window.location.assign(url);
-  }
-
-  async function signInWithOutlook() {
-    const url = await startOutlookSignIn({ returnTo: "/" });
-    if (!url) {
-      alert("Outlook Calendar is not configured for this build.");
-      return;
-    }
-    window.location.assign(url);
-  }
-
   return (
     <main className={page}>
       <div className={card}>
@@ -41,12 +22,18 @@ export default function SignIn() {
           Sign in to use Circular Time. Connect a calendar separately in Settings to read events.
         </p>
         <div className={buttons}>
-          <button type="button" className={providerButton} onClick={signInWithGoogle}>
-            Sign in with Google
-          </button>
-          <button type="button" className={providerButton} onClick={signInWithOutlook}>
-            Sign in with Outlook
-          </button>
+          <form method="post" action="/auth/google/start">
+            <input type="hidden" name="intent" value="sign-in" />
+            <button type="submit" className={providerButton}>
+              Sign in with Google
+            </button>
+          </form>
+          <form method="post" action="/auth/outlook/start">
+            <input type="hidden" name="intent" value="sign-in" />
+            <button type="submit" className={providerButton}>
+              Sign in with Outlook
+            </button>
+          </form>
         </div>
       </div>
     </main>

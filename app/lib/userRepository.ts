@@ -44,11 +44,18 @@ export interface UserRepository {
     provider: string,
     providerUserId: string
   ): Promise<ProviderAccountLinkResult>;
-  /** Creates a separate verified calendar connection; it cannot establish an application session. */
+  /**
+   * Creates a separate verified calendar connection, or reuses the user's
+   * existing one, and stores its sealed credential in the same transaction:
+   * either both are persisted or neither is. `sealCredential` receives the
+   * connection ID and returns the ciphertext to store. A connection cannot
+   * establish an application session.
+   */
   connectCalendarProvider(
     userId: string,
     provider: string,
-    providerUserId: string
+    providerUserId: string,
+    sealCredential: (calendarConnectionId: string) => string
   ): Promise<CalendarConnectionResult>;
   /** Removes one provider's calendar connection and all of its cached events without changing application identities. */
   disconnectCalendarProvider(userId: string, provider: string): Promise<void>;

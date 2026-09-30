@@ -56,6 +56,7 @@ model CalendarConnection {
   createdAt         DateTime           @default(now())
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   cachedEventRanges CachedEventRange[]
+  credential        CalendarCredential?
 
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
@@ -77,4 +78,17 @@ model CachedEventRange {
 
   @@unique([userId, calendarId, rangeStart, rangeEnd])
   @@index([calendarConnectionId])
+}
+
+/// Provider OAuth tokens for one calendar connection, encrypted by the
+/// application (AES-256-GCM) and bound to the owning user and connection.
+/// Deleted with the connection, so disconnecting removes stored credentials.
+model CalendarCredential {
+  calendarConnectionId String             @id
+  userId               String
+  ciphertext           String
+  updatedAt            DateTime           @updatedAt
+  calendarConnection   CalendarConnection @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([calendarConnectionId, userId])
 }

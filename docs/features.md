@@ -26,12 +26,12 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 
 | Feature | Status | Origin | Notes |
 |---|---|---|---|
-| Google Calendar integration | ✅ | planned | OAuth 2.0 PKCE + server-side token proxy (GCP Secret Manager); `GoogleCalendarProvider`. |
-| Outlook Calendar integration | ✅ | planned | Microsoft Graph, secretless public PKCE client; `OutlookCalendarProvider`. |
+| Google Calendar integration | ✅ | planned | Server-side OAuth 2.0 authorization-code flow with PKCE and a confidential client secret (GCP Secret Manager); `GoogleCalendarProvider`. |
+| Outlook Calendar integration | ✅ | planned | Microsoft Graph; server-side OAuth 2.0 authorization-code flow with PKCE as a confidential web client (secret in GCP Secret Manager); `OutlookCalendarProvider`. |
 | Local calendar access | ⏸ | planned (re-scoped) | `.ics`/CalDAV import. Deferred — no test service available (Milestone 3.5). |
 | Per-calendar visibility filtering | ✅ | planned | `CalendarVisibilityStore` persists show/hide; settings toggles write through; timeline respects. |
 | Refresh policy | ✅ | planned | Past = manual refresh only; near-future (≤1 day) = auto on open. Runs server-side to fetch only uncovered windows. |
-| Secure credential storage | ✅ | planned | Provider OAuth tokens in `localStorage` (browser-standard); user identity in a signed HTTP-only session cookie; Google client secret in GCP Secret Manager, never in the image. |
+| Secure credential storage | ✅ | planned | Provider OAuth tokens held only on the server, encrypted with AES-256-GCM under an application key and bound to their user and calendar connection; user identity in a signed HTTP-only session cookie; OAuth client secrets in GCP Secret Manager, never in the image. |
 
 ---
 
@@ -40,13 +40,13 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Feature | Status | Origin | Notes |
 |---|---|---|---|
 | Authentication gate | ✅ | **new** | Unauthenticated visitors are redirected to `sign-in.tsx`; Google/Outlook accounts provide identity only. Dev builds bypass the gate. |
-| Separate calendar connection | ✅ | **new** | Settings starts a separate Google or Outlook calendar-read consent flow for the authenticated application account; provider identity and calendar-read access are verified before storage in a calendar-connection record separate from identities that establish application sessions. Disconnect removes the calendar connection and cached events without changing application sign-in identities. |
+| Separate calendar connection | ✅ | **new** | Settings starts a separate Google or Outlook calendar-read consent flow for the authenticated application account; provider identity and calendar-read access are verified before storage in a calendar-connection record separate from identities that establish application sessions. The server stores the calendar's tokens encrypted. Disconnect removes the calendar connection, its stored tokens, and its cached events without changing application sign-in identities. |
 | Linked sign-in identities | ✅ | **new** | Settings links a second provider identity (Google or Microsoft) to the signed-in application account through an identity-only OAuth flow, so either identity signs in to the same account. At most one identity per provider per account; an identity owned by another account, as a sign-in identity or a calendar connection, is refused and accounts are never merged. |
-| Sign out | ✅ | **new** | Settings → Account → Sign out posts to `/auth/sign-out`, which revokes the server-side session, clears the cookie, and redirects to sign-in. A JavaScript submit handler first clears the browser's calendar tokens and cached events. Account data (identities, calendar connections, server cache) is never deleted by sign-out. |
+| Sign out | ✅ | **new** | Settings → Account → Sign out posts to `/auth/sign-out`, which revokes the server-side session, clears the cookie, and redirects to sign-in. Account data (identities, calendar connections, server cache) is never deleted by sign-out. |
 | Server-side session | ✅ | **new** | Sessions are rows in PostgreSQL (`Session`), keyed by the SHA-256 hash of a 256-bit random token. The signed, HTTP-only cookie carries only the token. Every authenticated request resolves it server-side, so revocation and the 30-day lifetime are enforced by the server. Each sign-in issues a new session and revokes any previous one in that browser. |
 | Persistent user store | ✅ | **new** | User records, application sign-in provider accounts, and calendar connections in PostgreSQL via Prisma, behind a `userRepository` interface so the driver stays swappable. |
 | Server-side event cache | ✅ | **new** | Calendar events persisted in Postgres, keyed by user + provider + time range; shared across devices; past data never auto-removed. Replaces the old per-device `localStorage` cache. |
-| Server-driven data flow | ✅ | **new** | The timeline reads events from a server `loader`; the client only fetches from provider APIs to warm a cold cache, then POSTs results to a route action. `useCalendarTimeline` is reduced to that optimistic warmer. |
+| Server-driven data flow | ✅ | **new** | The timeline reads events from a server `loader`, which fetches stale or missing windows from the providers with the account's stored credentials, refreshing expired access tokens. The browser makes no provider API calls. |
 
 ---
 
