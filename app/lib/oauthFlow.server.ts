@@ -8,7 +8,7 @@
  * confidential client secret, and completes the intent. Provider tokens stay
  * on the server; calendar credentials are stored encrypted.
  */
-import { createCookie, redirect } from "react-router";
+import { createCookie, data, redirect } from "react-router";
 import {
   deriveCodeChallenge,
   generateCodeVerifier,
@@ -259,29 +259,27 @@ async function completeCalendarConnection(
     // Without a refresh token the server could read the calendar for an hour only.
     throw new FlowError("The provider did not grant offline calendar access. Try again.");
   }
-  const result = await userRepository.connectCalendarProvider(userId, provider, providerUserId);
+  const result = await userRepository.connectCalendarProvider(
+    userId,
+    provider,
+    providerUserId,
+    (calendarConnectionId) => calendarCredentialStore.seal(userId, calendarConnectionId, tokens)
+  );
   if (result === "conflict") {
     throw new FlowError("This calendar is already connected to another Circular Time account.");
   }
-  const calendarConnectionId = await userRepository.getCalendarConnectionId(userId, provider);
-  if (!calendarConnectionId) {
-    throw new FlowError("The calendar connection disappeared before it could be saved.");
-  }
-  await calendarCredentialStore.save(userId, calendarConnectionId, tokens);
 }
 
 /**
  * Completes the flow on the provider's redirect back to the callback. Returns
- * a redirect on success, or a failure for the callback page to display. The
- * flow cookie is cleared on every outcome, so a callback cannot be replayed.
+ * a redirect on success, or a 400 failure for the callback page to display.
+ * Every outcome carries a Set-Cookie that expires the flow cookie, so a
+ * callback cannot be replayed.
  */
-export async function completeOAuthFlow(
-  request: Request,
-  provider: OAuthProviderId
-): Promise<Response | OAuthFailure> {
+export async function completeOAuthFlow(request: Request, provider: OAuthProviderId) {
   const headers = new Headers();
   headers.append("Set-Cookie", await flowCookie.serialize("", { maxAge: 0 }));
-  const fail = (error: string) => ({ error });
+  const fail = (error: string) => data<OAuthFailure>({ error }, { status: 400, headers });
 
   const params = new URL(request.url).searchParams;
   const flow: unknown = await flowCookie.parse(request.headers.get("Cookie"));

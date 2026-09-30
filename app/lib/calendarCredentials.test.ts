@@ -111,4 +111,19 @@ describe("CalendarCredentialStore", () => {
       "unreadable; reconnect required"
     );
   });
+
+  it("seals a credential that only the same user and connection can read", async () => {
+    const { repository, store } = setup();
+    const credential = { accessToken: "sealed-token", expiresAt: NOW.getTime() + HOUR };
+
+    const ciphertext = store.seal("user-1", "conn-1", credential);
+    expect(ciphertext).not.toContain("sealed-token");
+
+    repository.rows.set("user-1/conn-1", ciphertext);
+    await expect(store.accessToken("user-1", "conn-1", notCalled)).resolves.toBe("sealed-token");
+    repository.rows.set("user-1/conn-2", ciphertext);
+    await expect(store.accessToken("user-1", "conn-2", notCalled)).rejects.toBeInstanceOf(
+      ReconnectRequiredError
+    );
+  });
 });

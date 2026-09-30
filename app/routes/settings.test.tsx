@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -159,6 +160,30 @@ describe("Settings route", () => {
     await waitFor(() => expect(alertSpy).toHaveBeenCalledOnce());
     expect(getByText("Connected")).toBeTruthy();
     alertSpy.mockRestore();
+  });
+
+  it("renders the same markup on the first client render as on the server, then applies stored visibility", async () => {
+    localStorage.setItem("circular-time-calendar-visibility", JSON.stringify({ google: false }));
+    const page = (
+      <MemoryRouter>
+        <ThemeProvider>
+          <Settings
+            {...({
+              loaderData: { signInProviders: ["google"], connectedProviders: ["google"] },
+            } as unknown as Parameters<typeof Settings>[0])}
+          />
+        </ThemeProvider>
+      </MemoryRouter>
+    );
+    // The first client render (before effects) must agree with the server's,
+    // which cannot see localStorage and shows every connected calendar.
+    const firstRender = renderToString(page);
+    expect(firstRender).toMatch(/aria-label="Enable Google Calendar"[^>]*checked/);
+
+    const { getByLabelText } = render(page);
+    await waitFor(() =>
+      expect((getByLabelText("Enable Google Calendar") as HTMLInputElement).checked).toBe(false)
+    );
   });
 
   it("has a back link to the home route", () => {

@@ -22,6 +22,8 @@ const repository: CalendarCredentialRepository = new PrismaCalendarCredentialRep
 
 /** The application's credential store; the cipher key is read on first use. */
 export const calendarCredentialStore = {
+  seal: (...args: Parameters<CalendarCredentialStore["seal"]>) =>
+    new CalendarCredentialStore(repository, tokenCipher()).seal(...args),
   save: (...args: Parameters<CalendarCredentialStore["save"]>) =>
     new CalendarCredentialStore(repository, tokenCipher()).save(...args),
   accessToken: (...args: Parameters<CalendarCredentialStore["accessToken"]>) =>

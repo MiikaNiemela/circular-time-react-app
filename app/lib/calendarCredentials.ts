@@ -54,13 +54,18 @@ export class CalendarCredentialStore {
     private readonly now: () => Date = () => new Date()
   ) {}
 
+  /** Encrypts a credential bound to the user's connection, for storage. */
+  seal(userId: string, calendarConnectionId: string, credential: StoredCredential): string {
+    return this.cipher.encrypt(JSON.stringify(credential), context(userId, calendarConnectionId));
+  }
+
   /** Encrypts and stores the credential for the user's connection. */
   async save(userId: string, calendarConnectionId: string, credential: StoredCredential) {
-    const ciphertext = this.cipher.encrypt(
-      JSON.stringify(credential),
-      context(userId, calendarConnectionId)
+    await this.repository.save(
+      userId,
+      calendarConnectionId,
+      this.seal(userId, calendarConnectionId, credential)
     );
-    await this.repository.save(userId, calendarConnectionId, ciphertext);
   }
 
   /**

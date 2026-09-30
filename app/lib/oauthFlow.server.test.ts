@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   signInWithProvider: vi.fn(),
   linkProviderAccount: vi.fn(),
   connectCalendarProvider: vi.fn(),
-  getCalendarConnectionId: vi.fn(),
   fetchGoogleUserId: vi.fn(),
   fetchOutlookUserId: vi.fn(),
   verifyGoogleCalendarAccess: vi.fn(),
@@ -16,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   exchangeAuthorizationCode: vi.fn(),
   getGoogleClientSecret: vi.fn(),
   getOutlookClientSecret: vi.fn(),
-  saveCredential: vi.fn(),
+  sealCredential: vi.fn(),
   newSession: { id: "", set: vi.fn() },
   previousSession: { id: "" },
 }));
@@ -34,7 +33,6 @@ vi.mock("./userRepository.server", () => ({
     signInWithProvider: mocks.signInWithProvider,
     linkProviderAccount: mocks.linkProviderAccount,
     connectCalendarProvider: mocks.connectCalendarProvider,
-    getCalendarConnectionId: mocks.getCalendarConnectionId,
   },
 }));
 vi.mock("./userInfo.server", () => ({
@@ -51,10 +49,27 @@ vi.mock("../data/providers/clientSecrets.server", () => ({
   getOutlookClientSecret: mocks.getOutlookClientSecret,
 }));
 vi.mock("./calendarCredentials.server", () => ({
-  calendarCredentialStore: { save: mocks.saveCredential },
+  calendarCredentialStore: { seal: mocks.sealCredential },
 }));
 
 import { completeOAuthFlow, publicOrigin, startOAuthFlow } from "./oauthFlow.server";
+
+type Outcome = Awaited<ReturnType<typeof completeOAuthFlow>>;
+
+/** The failure message, or null for a redirect. */
+function failure(result: Outcome): string | null {
+  return result instanceof Response ? null : result.data.error;
+}
+
+/** Headers of either outcome. */
+function headersOf(result: Outcome): Headers {
+  return result instanceof Response ? result.headers : new Headers(result.init?.headers);
+}
+
+/** Whether the outcome expires the OAuth flow cookie. */
+function expiresFlowCookie(result: Outcome): boolean {
+  return /__oauth_flow=; .*Max-Age=0/.test(headersOf(result).get("Set-Cookie") ?? "");
+}
 
 const ORIGIN = "http://localhost:5173";
 const TOKENS = { accessToken: "provider-at", refreshToken: "provider-rt", expiresAt: 1 };
@@ -97,7 +112,7 @@ beforeEach(() => {
   mocks.signInWithProvider.mockResolvedValue({ kind: "signed-in", userId: "user-1" });
   mocks.linkProviderAccount.mockResolvedValue("linked");
   mocks.connectCalendarProvider.mockResolvedValue("connected");
-  mocks.getCalendarConnectionId.mockResolvedValue("connection-1");
+  mocks.sealCredential.mockReturnValue("sealed");
   mocks.verifyGoogleCalendarAccess.mockResolvedValue(undefined);
   mocks.verifyOutlookCalendarAccess.mockResolvedValue(undefined);
 });
@@ -179,7 +194,8 @@ describe("completeOAuthFlow", () => {
     expect(response.headers.get("Location")).toBe("/");
     expect(response.headers.get("Set-Cookie")).toContain("__session=new");
     // Provider tokens are not stored for a sign-in.
-    expect(mocks.saveCredential).not.toHaveBeenCalled();
+    expect(mocks.sealCredential).not.toHaveBeenCalled();
+    expect(expiresFlowCookie(result)).toBe(true);
   });
 
   it("revokes a pre-existing session instead of reusing it on sign-in", async () => {
@@ -202,9 +218,18 @@ describe("completeOAuthFlow", () => {
     );
 
     expect(mocks.verifyOutlookCalendarAccess).toHaveBeenCalledWith("provider-at");
-    expect(mocks.connectCalendarProvider).toHaveBeenCalledWith("user-1", "outlook", "outlook-id");
-    expect(mocks.saveCredential).toHaveBeenCalledWith("user-1", "connection-1", TOKENS);
+    expect(mocks.connectCalendarProvider).toHaveBeenCalledWith(
+      "user-1",
+      "outlook",
+      "outlook-id",
+      expect.any(Function)
+    );
+    // The repository seals the credential for the connection inside its transaction.
+    const sealFor = mocks.connectCalendarProvider.mock.calls[0][3] as (id: string) => string;
+    expect(sealFor("connection-1")).toBe("sealed");
+    expect(mocks.sealCredential).toHaveBeenCalledWith("user-1", "connection-1", TOKENS);
     expect((result as Response).headers.get("Location")).toBe("/settings");
+    expect(expiresFlowCookie(result)).toBe(true);
   });
 
   it("links a sign-in identity without storing tokens or changing the session", async () => {
@@ -217,7 +242,7 @@ describe("completeOAuthFlow", () => {
     );
 
     expect(mocks.linkProviderAccount).toHaveBeenCalledWith("user-1", "outlook", "outlook-id");
-    expect(mocks.saveCredential).not.toHaveBeenCalled();
+    expect(mocks.connectCalendarProvider).not.toHaveBeenCalled();
     expect(mocks.commitSession).not.toHaveBeenCalled();
     expect((result as Response).headers.get("Location")).toBe("/settings");
   });
@@ -232,7 +257,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("never merged") });
+    expect(failure(result)).toContain("never merged");
   });
 
   it("refuses a callback whose state does not match the flow", async () => {
@@ -243,7 +268,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("does not match") });
+    expect(failure(result)).toContain("does not match");
     expect(mocks.exchangeAuthorizationCode).not.toHaveBeenCalled();
   });
 
@@ -253,7 +278,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("expired or is missing") });
+    expect(failure(result)).toContain("expired or is missing");
     expect(mocks.exchangeAuthorizationCode).not.toHaveBeenCalled();
   });
 
@@ -265,7 +290,7 @@ describe("completeOAuthFlow", () => {
       "outlook"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("does not match") });
+    expect(failure(result)).toContain("does not match");
   });
 
   it("refuses to connect a calendar when the account changed during the flow", async () => {
@@ -277,8 +302,8 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("signed out") });
-    expect(mocks.saveCredential).not.toHaveBeenCalled();
+    expect(failure(result)).toContain("signed out");
+    expect(mocks.connectCalendarProvider).not.toHaveBeenCalled();
   });
 
   it("requires offline access before connecting a calendar", async () => {
@@ -291,7 +316,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("offline calendar access") });
+    expect(failure(result)).toContain("offline calendar access");
     expect(mocks.connectCalendarProvider).not.toHaveBeenCalled();
   });
 
@@ -303,7 +328,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: expect.stringContaining("access_denied") });
+    expect(failure(result)).toContain("access_denied");
     expect(mocks.exchangeAuthorizationCode).not.toHaveBeenCalled();
   });
 
@@ -319,7 +344,7 @@ describe("completeOAuthFlow", () => {
       "google"
     );
 
-    expect(result).toEqual({ error: "Authorization could not be completed. Try again." });
+    expect(failure(result)).toBe("Authorization could not be completed. Try again.");
     errorSpy.mockRestore();
   });
 });
@@ -339,5 +364,32 @@ describe("publicOrigin", () => {
     expect(publicOrigin(new Request("http://localhost:3000/auth/google/start"))).toBe(
       "http://localhost:3000"
     );
+  });
+});
+
+describe("completeOAuthFlow failures", () => {
+  it("expire the flow cookie and answer 400 on every failure path", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { cookie, state } = await start("google", "sign-in");
+    const cases: Array<[string, Request]> = [
+      ["provider denial", callback("google", { error: "access_denied", state }, cookie)],
+      ["missing code", callback("google", { state }, cookie)],
+      ["missing flow", callback("google", { code: "code", state })],
+      ["state mismatch", callback("google", { code: "code", state: "forged" }, cookie)],
+    ];
+    for (const [name, request] of cases) {
+      const result = await completeOAuthFlow(request, "google");
+      expect(failure(result), name).not.toBeNull();
+      expect(result instanceof Response ? result.status : result.init?.status, name).toBe(400);
+      expect(expiresFlowCookie(result), name).toBe(true);
+    }
+
+    mocks.exchangeAuthorizationCode.mockRejectedValueOnce(new Error("token endpoint failed: 400"));
+    const tokenFailure = await completeOAuthFlow(
+      callback("google", { code: "code", state }, cookie),
+      "google"
+    );
+    expect(expiresFlowCookie(tokenFailure)).toBe(true);
+    errorSpy.mockRestore();
   });
 });

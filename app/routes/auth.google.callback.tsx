@@ -11,9 +11,7 @@ export function meta() {
  */
 export async function loader({ request }: Route.LoaderArgs) {
   const { completeOAuthFlow } = await import("../lib/oauthFlow.server");
-  const result = await completeOAuthFlow(request, "google");
-  if (result instanceof Response) return result;
-  return result;
+  return completeOAuthFlow(request, "google");
 }
 
 export default function GoogleCallback() {

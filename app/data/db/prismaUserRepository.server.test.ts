@@ -12,6 +12,7 @@ describe("PrismaUserRepository", () => {
   let calendarConnectionFindUnique: ReturnType<typeof vi.fn>;
   let update: ReturnType<typeof vi.fn>;
   let calendarConnectionDeleteMany: ReturnType<typeof vi.fn>;
+  let calendarCredentialUpsert: ReturnType<typeof vi.fn>;
   let deleteMany: ReturnType<typeof vi.fn>;
   let transaction: ReturnType<typeof vi.fn>;
   let repo: PrismaUserRepository;
@@ -26,6 +27,7 @@ describe("PrismaUserRepository", () => {
     calendarConnectionFindUnique = vi.fn();
     update = vi.fn();
     calendarConnectionDeleteMany = vi.fn();
+    calendarCredentialUpsert = vi.fn();
     deleteMany = vi.fn();
     transaction = vi.fn(async (callback: (tx: unknown) => unknown) =>
       callback({
@@ -39,6 +41,7 @@ describe("PrismaUserRepository", () => {
           deleteMany: calendarConnectionDeleteMany,
         },
         cachedEventRange: { deleteMany },
+        calendarCredential: { upsert: calendarCredentialUpsert },
       })
     );
     const db = {
@@ -219,10 +222,17 @@ describe("PrismaUserRepository", () => {
   });
 
   describe("connectCalendarProvider", () => {
-    it("creates a separate calendar connection without creating a sign-in identity", async () => {
-      calendarConnectionUpsert.mockResolvedValue({ userId: "user-uuid" });
+    const seal = (connectionId: string) => `sealed-for-${connectionId}`;
 
-      const result = await repo.connectCalendarProvider("user-uuid", "outlook", "outlook-id-abc");
+    it("creates a calendar connection and its sealed credential in one serializable transaction", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "user-uuid" });
+
+      const result = await repo.connectCalendarProvider(
+        "user-uuid",
+        "outlook",
+        "outlook-id-abc",
+        seal
+      );
 
       expect(result).toBe("connected");
       expect(calendarConnectionUpsert).toHaveBeenCalledWith({
@@ -235,7 +245,19 @@ describe("PrismaUserRepository", () => {
           providerUserId: "outlook-id-abc",
           userId: "user-uuid",
         },
-        select: { userId: true },
+        select: { id: true, userId: true },
+      });
+      expect(calendarCredentialUpsert).toHaveBeenCalledWith({
+        where: {
+          calendarConnectionId_userId: { calendarConnectionId: "conn-1", userId: "user-uuid" },
+        },
+        create: {
+          calendarConnectionId: "conn-1",
+          userId: "user-uuid",
+          ciphertext: "sealed-for-conn-1",
+        },
+        update: { ciphertext: "sealed-for-conn-1" },
+        select: { calendarConnectionId: true },
       });
       expect(providerAccountFindUnique).toHaveBeenCalledWith({
         where: {
@@ -243,25 +265,38 @@ describe("PrismaUserRepository", () => {
         },
         select: { id: true },
       });
+      expect(transaction).toHaveBeenCalledOnce();
       expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
         isolationLevel: "Serializable",
       });
       expect(upsert).not.toHaveBeenCalled();
     });
 
-    it("does not connect a calendar identity already linked to another application account", async () => {
-      calendarConnectionUpsert.mockResolvedValue({ userId: "other-user-uuid" });
+    it("fails the whole transaction when the credential cannot be stored", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "user-uuid" });
+      calendarCredentialUpsert.mockRejectedValue(new Error("database unavailable"));
 
       await expect(
-        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123")
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
+      ).rejects.toThrow("database unavailable");
+      // Both writes ran inside the one transaction, so PostgreSQL rolls back the connection.
+      expect(transaction).toHaveBeenCalledOnce();
+    });
+
+    it("does not connect a calendar identity already linked to another application account", async () => {
+      calendarConnectionUpsert.mockResolvedValue({ id: "conn-1", userId: "other-user-uuid" });
+
+      await expect(
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
       ).resolves.toBe("conflict");
+      expect(calendarCredentialUpsert).not.toHaveBeenCalled();
     });
 
     it("reports a conflict when a unique calendar connection cannot be created", async () => {
       calendarConnectionUpsert.mockRejectedValue({ code: "P2002" });
 
       await expect(
-        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123")
+        repo.connectCalendarProvider("user-uuid", "google", "google-sub-123", seal)
       ).resolves.toBe("conflict");
     });
   });

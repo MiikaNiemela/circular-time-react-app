@@ -70,12 +70,18 @@ const INITIAL_PROVIDERS: CalendarProvider[] = [
   { id: "ical", name: "iCal / CalDAV", icon: "🗓", connected: false, enabled: false },
 ];
 
-/** Merges server-side connection state with the browser's visibility preferences. */
-function resolveProviders(connectedProviders: readonly string[]): CalendarProvider[] {
-  const visibility = new CalendarVisibilityStore();
+/**
+ * Server-side connection state. Without a visibility store every connected
+ * calendar is shown, which is also what the server renders; the browser's
+ * stored visibility is merged in after hydration.
+ */
+function resolveProviders(
+  connectedProviders: readonly string[],
+  visibility?: CalendarVisibilityStore
+): CalendarProvider[] {
   return INITIAL_PROVIDERS.map((p) =>
     connectedProviders.includes(p.id)
-      ? { ...p, connected: true, enabled: visibility.isVisible(p.id) }
+      ? { ...p, connected: true, enabled: visibility?.isVisible(p.id) ?? true }
       : p
   );
 }
@@ -116,7 +122,7 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
   // so it is applied after hydration to keep the server and client renders equal.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe localStorage merge after hydration
-    setProviders(resolveProviders(connectedProviders ?? []));
+    setProviders(resolveProviders(connectedProviders ?? [], new CalendarVisibilityStore()));
   }, [connectedProviders]);
 
   function toggleEnabled(id: string) {

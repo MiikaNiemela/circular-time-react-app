@@ -86,7 +86,8 @@ export class PrismaUserRepository {
   async connectCalendarProvider(
     userId: string,
     provider: string,
-    providerUserId: string
+    providerUserId: string,
+    sealCredential: (calendarConnectionId: string) => string
   ): Promise<"connected" | "conflict"> {
     try {
       return await this.runSerializable(async (tx) => {
@@ -98,9 +99,22 @@ export class PrismaUserRepository {
           where: { provider_providerUserId: { provider, providerUserId } },
           update: {},
           create: { provider, providerUserId, userId },
-          select: { userId: true },
+          select: { id: true, userId: true },
         });
-        return connection.userId === userId ? "connected" : "conflict";
+        if (connection.userId !== userId) return "conflict";
+        // Stored in the same transaction, so a failed credential write also
+        // rolls back a newly created connection: a calendar is never shown as
+        // connected without a usable credential.
+        const ciphertext = sealCredential(connection.id);
+        await tx.calendarCredential.upsert({
+          where: {
+            calendarConnectionId_userId: { calendarConnectionId: connection.id, userId },
+          },
+          create: { calendarConnectionId: connection.id, userId, ciphertext },
+          update: { ciphertext },
+          select: { calendarConnectionId: true },
+        });
+        return "connected";
       });
     } catch (error: unknown) {
       // The user already has a different identity for this provider, or the
