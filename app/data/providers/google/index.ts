@@ -7,7 +7,7 @@
 export { GoogleCalendarProvider } from "./GoogleCalendarProvider";
 export type { GoogleProviderConfig } from "./GoogleCalendarProvider";
 export { GoogleTokenStore } from "./tokenStore";
-export type { GoogleTokens } from "./tokenStore";
+export type { GoogleTokens, StoredGoogleTokens } from "./tokenStore";
 export { buildAuthUrl, exchangeCodeForTokens, refreshAccessToken, CALENDAR_SCOPE } from "./auth";
 export { generateCodeVerifier, generateState, deriveCodeChallenge } from "./pkce";
 export { startGoogleAuth, completeGoogleAuth } from "./browserAuth";

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
-import Home, { action } from "./home";
+import Home, { action, loader } from "./home";
 import type { CalendarEventData } from "../lib/calendarTimeline";
 
 // Provider configs — keep tests free of env-var dependencies.
@@ -21,13 +21,11 @@ vi.mock("../data/providers/outlook/config", () => ({
 vi.mock("../lib/buildConfig", () => ({ isProduction: vi.fn(() => false) }));
 
 const mocks = vi.hoisted(() => ({
-  useIsAuthenticated: vi.fn(() => true),
   useShowTimeLapse: vi.fn(),
   useCalendarTimeline: vi.fn(),
   getDevFixtureCalendars: vi.fn(),
 }));
 
-vi.mock("../lib/authState", () => ({ useIsAuthenticated: mocks.useIsAuthenticated }));
 vi.mock("../lib/persistentState", () => ({
   useShowTimeLapse: mocks.useShowTimeLapse,
 }));
@@ -45,20 +43,40 @@ const serverMocks = vi.hoisted(() => ({
   cacheSet: vi.fn(),
   cacheGet: vi.fn(),
   getConnectedProviders: vi.fn(),
+  getCalendarConnections: vi.fn(),
+  getCalendarConnectionId: vi.fn(),
+  getCalendarConnection: vi.fn(),
+  fetchGoogleUserId: vi.fn(),
+  fetchOutlookUserId: vi.fn(),
 }));
 
 vi.mock("../lib/session.server", () => ({ getUserId: serverMocks.getUserId }));
 vi.mock("../lib/serverEventCache.server", () => ({
   serverEventCache: { set: serverMocks.cacheSet, get: serverMocks.cacheGet },
 }));
+vi.mock("../lib/userInfo.server", () => ({
+  fetchGoogleUserId: serverMocks.fetchGoogleUserId,
+  fetchOutlookUserId: serverMocks.fetchOutlookUserId,
+}));
 vi.mock("../lib/userRepository.server", () => ({
-  userRepository: { getConnectedProviders: serverMocks.getConnectedProviders },
+  userRepository: {
+    getConnectedProviders: serverMocks.getConnectedProviders,
+    getCalendarConnections: serverMocks.getCalendarConnections,
+    getCalendarConnectionId: serverMocks.getCalendarConnectionId,
+    getCalendarConnection: serverMocks.getCalendarConnection,
+  },
 }));
 
 import { isProduction } from "../lib/buildConfig";
 
-const DEFAULT_LOADER_DATA: { serverCalendars: CalendarEventData[]; view: string; ref: string } = {
+const DEFAULT_LOADER_DATA: {
+  serverCalendars: CalendarEventData[];
+  calendarConnections: Array<{ id: string; provider: string; providerUserId: string }>;
+  view: string;
+  ref: string;
+} = {
   serverCalendars: [],
+  calendarConnections: [],
   view: "day",
   ref: "2026-06-20",
 };
@@ -77,47 +95,21 @@ function makeStub(loaderData = DEFAULT_LOADER_DATA) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.useIsAuthenticated.mockReturnValue(true);
   mocks.useShowTimeLapse.mockReturnValue([false, vi.fn()]);
   mocks.useCalendarTimeline.mockReturnValue({ calendars: [], failedCalendars: [] });
   mocks.getDevFixtureCalendars.mockReturnValue([]);
   vi.mocked(isProduction).mockReturnValue(false); // dev mode by default
 });
 
-describe("Home route — auth gate", () => {
-  it("renders timeline controls when authenticated", async () => {
+describe("Home route — rendering", () => {
+  it("renders timeline controls when loader data is available", async () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/"]} />);
     await screen.findByRole("group", { name: /time view/i });
     expect(screen.getByRole("group", { name: /time view/i })).toBeTruthy();
   });
 
-  it("does not redirect in dev mode when unauthenticated (gate bypassed)", async () => {
-    mocks.useIsAuthenticated.mockReturnValue(false);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByRole("group", { name: /time view/i });
-    expect(screen.queryByTestId("sign-in-page")).toBeNull();
-  });
-
-  it("redirects to /sign-in when unauthenticated in production mode", async () => {
-    mocks.useIsAuthenticated.mockReturnValue(false);
-    vi.mocked(isProduction).mockReturnValue(true);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByTestId("sign-in-page");
-    expect(screen.queryByRole("group", { name: /time view/i })).toBeNull();
-  });
-
-  it("does not redirect when authenticated in production mode", async () => {
-    vi.mocked(isProduction).mockReturnValue(true);
-    const HomeStub = makeStub();
-    render(<HomeStub initialEntries={["/"]} />);
-    await screen.findByRole("group", { name: /time view/i });
-    expect(screen.queryByTestId("sign-in-page")).toBeNull();
-  });
-
-  it("shows 'No calendars connected' when authenticated but no calendars are linked", async () => {
+  it("shows 'No calendars connected' when no calendars are linked", async () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/?ref=2026-06-20"]} />);
     await screen.findByText(/No calendars connected/i);
@@ -125,7 +117,51 @@ describe("Home route — auth gate", () => {
   });
 });
 
+describe("Home route — server auth gate", () => {
+  it("redirects unauthenticated production requests before rendering the timeline", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(true);
+    const request = new Request("http://localhost/");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).rejects.toMatchObject({
+      status: 302,
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("keeps the development fixture reachable without a session", async () => {
+    serverMocks.getUserId.mockResolvedValue(null);
+    vi.mocked(isProduction).mockReturnValue(false);
+    const request = new Request("http://localhost/");
+
+    await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toEqual(
+      expect.objectContaining({ serverCalendars: [] })
+    );
+  });
+});
+
 describe("Home route — server data", () => {
+  it("returns immutable calendar connection IDs so the browser can reject stale token and cache ownership", async () => {
+    serverMocks.getUserId.mockResolvedValue("user-1");
+    serverMocks.getConnectedProviders.mockResolvedValue(["google"]);
+    serverMocks.getCalendarConnections.mockResolvedValue([
+      { id: "connection-1", provider: "google", providerUserId: "google-account" },
+    ]);
+    serverMocks.cacheGet.mockResolvedValue(null);
+
+    const result = await loader({
+      request: new Request("http://localhost/?view=day"),
+    } as Parameters<typeof loader>[0]);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        calendarConnections: [
+          { id: "connection-1", provider: "google", providerUserId: "google-account" },
+        ],
+      })
+    );
+  });
+
   it("uses server calendars from loader when DB cache is warm", async () => {
     const serverCalendars = [
       {
@@ -134,7 +170,14 @@ describe("Home route — server data", () => {
         fetchedRange: { start: "2026-06-20T00:00:00Z", end: "2026-06-21T00:00:00Z" },
       },
     ];
-    const HomeStub = makeStub({ serverCalendars, view: "day", ref: "2026-06-20" });
+    const HomeStub = makeStub({
+      serverCalendars,
+      calendarConnections: [
+        { id: "connection-1", provider: "google", providerUserId: "google-account" },
+      ],
+      view: "day",
+      ref: "2026-06-20",
+    });
     render(<HomeStub initialEntries={["/"]} />);
     await screen.findByRole("group", { name: /time view/i });
     // When server has fresh data, hook is disabled (enabled: false)
@@ -147,7 +190,14 @@ describe("Home route — server data", () => {
 
   it("enables the hook when DB cache is cold (no fetchedRange on any calendar)", async () => {
     const serverCalendars = [{ calendarId: "google", events: [], fetchedRange: null }];
-    const HomeStub = makeStub({ serverCalendars, view: "day", ref: "2026-06-20" });
+    const HomeStub = makeStub({
+      serverCalendars,
+      calendarConnections: [
+        { id: "connection-1", provider: "google", providerUserId: "google-account" },
+      ],
+      view: "day",
+      ref: "2026-06-20",
+    });
     render(<HomeStub initialEntries={["/"]} />);
     await screen.findByRole("group", { name: /time view/i });
     expect(mocks.useCalendarTimeline).toHaveBeenCalledWith(
@@ -161,6 +211,8 @@ describe("Home route — server data", () => {
 describe("Home route — action", () => {
   const validEntry = {
     calendarId: "google",
+    calendarConnectionId: "connection-1",
+    accessToken: "google-account-token",
     range: { start: "2026-06-20T00:00:00Z", end: "2026-06-21T00:00:00Z" },
     events: [],
     fetchedAt: "2026-06-20T10:00:00Z",
@@ -176,7 +228,12 @@ describe("Home route — action", () => {
 
   beforeEach(() => {
     serverMocks.getUserId.mockResolvedValue("user-1");
-    serverMocks.getConnectedProviders.mockResolvedValue(["google"]);
+    serverMocks.getCalendarConnection.mockResolvedValue({
+      id: "connection-1",
+      provider: "google",
+      providerUserId: "google-account",
+    });
+    serverMocks.fetchGoogleUserId.mockResolvedValue("google-account");
     serverMocks.cacheSet.mockResolvedValue(undefined);
   });
 
@@ -199,11 +256,38 @@ describe("Home route — action", () => {
     expect(serverMocks.cacheSet).not.toHaveBeenCalled();
   });
 
-  it("returns 403 when calendarId is not one of the user's connected providers", async () => {
-    serverMocks.getConnectedProviders.mockResolvedValue(["outlook"]);
+  it("returns 403 when the submitted connection is no longer active", async () => {
+    serverMocks.getCalendarConnection.mockResolvedValue(null);
     const res = await runAction(validEntry);
     expect(res.status).toBe(403);
     expect(serverMocks.cacheSet).not.toHaveBeenCalled();
+  });
+
+  it("rejects cache events when the submitted token belongs to a different calendar identity", async () => {
+    serverMocks.getCalendarConnection.mockResolvedValue({
+      id: "connection-b",
+      provider: "google",
+      providerUserId: "google-account-b",
+    });
+    serverMocks.fetchGoogleUserId.mockResolvedValue("google-account-a");
+
+    const res = await runAction({
+      ...validEntry,
+      calendarConnectionId: "connection-b",
+      accessToken: "stale-account-a-token",
+    });
+
+    expect(res.status).toBe(403);
+    expect(serverMocks.fetchGoogleUserId).toHaveBeenCalledWith("stale-account-a-token");
+    expect(serverMocks.cacheSet).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when a calendar is disconnected before the cache write can commit", async () => {
+    serverMocks.cacheSet.mockRejectedValue({ code: "P2025" });
+
+    const res = await runAction(validEntry);
+
+    expect(res.status).toBe(409);
   });
 
   it("persists the entry and returns 200 for a valid authorized payload", async () => {
@@ -211,6 +295,7 @@ describe("Home route — action", () => {
     expect(res.status).toBe(200);
     expect(serverMocks.cacheSet).toHaveBeenCalledWith(
       "user-1",
+      "connection-1",
       expect.objectContaining({ calendarId: "google" })
     );
   });

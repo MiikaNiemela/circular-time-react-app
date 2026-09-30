@@ -28,6 +28,8 @@ function sessionStore(): KeyValueStorage {
 export interface StartAuthOptions {
   clientId: string;
   redirectUri: string;
+  /** OAuth scopes requested for this flow; defaults to calendar access. */
+  scope?: string;
   /** Injectable for tests; defaults to sessionStorage. */
   storage?: KeyValueStorage;
 }
@@ -39,6 +41,7 @@ export interface StartAuthOptions {
 export async function startGoogleAuth({
   clientId,
   redirectUri,
+  scope,
   storage = sessionStore(),
 }: StartAuthOptions): Promise<string> {
   const verifier = generateCodeVerifier();
@@ -48,7 +51,7 @@ export async function startGoogleAuth({
   storage.setItem(VERIFIER_KEY, verifier);
   storage.setItem(STATE_KEY, state);
 
-  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state });
+  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state, scope });
 }
 
 export interface CompleteAuthOptions {
@@ -60,6 +63,10 @@ export interface CompleteAuthOptions {
   state: string;
   storage?: KeyValueStorage;
   tokenStore?: GoogleTokenStore;
+  /** Server-issued connection ID required before a browser token can be persisted. */
+  calendarConnectionId?: string;
+  /** False by default; only a confirmed calendar connection may persist tokens. */
+  persistTokens?: boolean;
   fetchFn?: typeof fetch;
 }
 
@@ -75,6 +82,8 @@ export async function completeGoogleAuth({
   state,
   storage = sessionStore(),
   tokenStore = new GoogleTokenStore(),
+  calendarConnectionId,
+  persistTokens = false,
   fetchFn = fetch,
 }: CompleteAuthOptions): Promise<GoogleTokens> {
   const expectedState = storage.getItem(STATE_KEY);
@@ -94,7 +103,12 @@ export async function completeGoogleAuth({
     codeVerifier: verifier,
     fetchFn,
   });
-  tokenStore.set(tokens);
+  if (persistTokens) {
+    if (!calendarConnectionId) {
+      throw new Error("Cannot persist calendar tokens without a confirmed calendar connection");
+    }
+    tokenStore.set({ ...tokens, calendarConnectionId });
+  }
 
   // One-time secrets: clear so they cannot be replayed.
   storage.removeItem(VERIFIER_KEY);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { completeOutlookAuth } from "../data/providers/outlook";
+import { completeOutlookAuth, OutlookTokenStore } from "../data/providers/outlook";
 import { OUTLOOK_CLIENT_ID, outlookRedirectUri } from "../data/providers/outlook/config";
 import { consumePostAuthRedirect } from "../lib/authState";
 
@@ -28,20 +28,51 @@ export default function OutlookCallback() {
       return;
     }
 
+    const flow = consumePostAuthRedirect();
+    if (!flow) {
+      setError("OAuth flow state is missing. Start again from the sign-in or Settings page.");
+      return;
+    }
+    if (flow.provider !== "outlook" || flow.oauthState !== state) {
+      setError(
+        "OAuth flow state does not match this callback. Start again from the sign-in or Settings page."
+      );
+      return;
+    }
+
     completeOutlookAuth({
       clientId: OUTLOOK_CLIENT_ID,
       redirectUri: outlookRedirectUri(window.location.origin),
       code,
       state,
+      persistTokens: false,
     })
       .then(async (tokens) => {
-        // Non-blocking: localStorage auth remains active if session creation fails.
-        await fetch("/auth/session", {
+        const endpoint = flow.intent === "sign-in" ? "/auth/session" : "/auth/calendar-connection";
+        const body =
+          flow.intent === "sign-in"
+            ? { intent: flow.intent, provider: "outlook", accessToken: tokens.accessToken }
+            : { provider: "outlook", accessToken: tokens.accessToken };
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: "outlook", accessToken: tokens.accessToken }),
-        }).catch(console.error);
-        navigate(consumePostAuthRedirect() ?? "/settings", { replace: true });
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          throw new Error("Unable to establish the application session.");
+        }
+        if (flow.intent === "connect-calendar") {
+          const result: unknown = await response.json();
+          const calendarConnectionId =
+            typeof result === "object" && result !== null && "calendarConnectionId" in result
+              ? (result as { calendarConnectionId?: unknown }).calendarConnectionId
+              : null;
+          if (typeof calendarConnectionId !== "string" || calendarConnectionId.length === 0) {
+            throw new Error("Calendar connection was not confirmed.");
+          }
+          new OutlookTokenStore().set({ ...tokens, calendarConnectionId });
+        }
+        navigate(flow.returnTo, { replace: true });
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Sign-in failed."));
   }, [params, navigate]);

@@ -51,6 +51,23 @@ describe("exchangeCodeForTokens", () => {
     expect((init as RequestInit).body as string).toContain("code_verifier=verifier");
   });
 
+  it("omits scope on an authorization-code exchange so the token retains the consented identity and calendar grants", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({ access_token: "at", expires_in: 3600, token_type: "Bearer" })
+    );
+
+    await exchangeCodeForTokens({
+      clientId: "cid",
+      redirectUri: "https://app/cb",
+      code: "code",
+      codeVerifier: "verifier",
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.body ?? "") as string).not.toContain("scope=");
+  });
+
   it("throws on a non-ok response", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({}, false, 400));
     await expect(

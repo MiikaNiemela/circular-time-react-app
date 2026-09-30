@@ -68,11 +68,12 @@ export class OutlookCalendarProvider implements CalendarProvider {
         console.error("Outlook session expired; reconnect required");
         throw new Error("Outlook session expired; reconnect required");
       }
-      tokens = await refreshAccessToken({
+      const refreshed = await refreshAccessToken({
         clientId: this.clientId,
         refreshToken: tokens.refreshToken,
         fetchFn: this.fetchFn,
       });
+      tokens = { ...refreshed, calendarConnectionId: tokens.calendarConnectionId };
       this.tokenStore.set(tokens);
     }
     return tokens.accessToken;

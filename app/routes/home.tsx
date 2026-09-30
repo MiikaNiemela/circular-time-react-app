@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
-import { useState, useMemo, useCallback, useEffect } from "react";
-import { Link, useNavigate, useLoaderData, useSearchParams, useFetcher } from "react-router";
+import { useState, useMemo, useCallback } from "react";
+import { Link, redirect, useLoaderData, useSearchParams, useFetcher } from "react-router";
 import { MultiCircle } from "../components/timeline";
 import { SegmentedControl, type TimeView } from "../components/SegmentedControl";
 import { PeriodNavigator } from "../components/PeriodNavigator";
@@ -9,12 +9,12 @@ import { EventDetail } from "../components/EventDetail";
 import { slicesForViewOuterRing } from "../lib/timeSlices";
 import { eventRingsForCalendars } from "../lib/calendarTimeline";
 import { useCalendarTimeline } from "../lib/useCalendarTimeline";
+import type { FetchedCalendarEntry } from "../lib/useCalendarTimeline";
 import { useShowTimeLapse } from "../lib/persistentState";
-import { useIsAuthenticated } from "../lib/authState";
 import { isProduction } from "../lib/buildConfig";
 import { getDevFixtureCalendars } from "../lib/devFixture";
 import type { CalendarEvent, CalendarEventData } from "../lib/calendarTimeline";
-import type { CacheEntry } from "../lib/useCalendarTimeline";
+import type { CacheEntry } from "../data/cache";
 import {
   splitIntoMonthlyWindows,
   deduplicateEvents,
@@ -54,15 +54,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   const ref = refDate.toISOString().slice(0, 10);
 
   if (!userId) {
-    return { serverCalendars: [] as CalendarEventData[], view, ref };
+    if (isProduction()) throw redirect("/sign-in");
+    return { serverCalendars: [] as CalendarEventData[], calendarConnections: [], view, ref };
   }
 
   const range = eventWindow(view, refDate);
   const windows = splitIntoMonthlyWindows(range);
-  const providers = await userRepository.getConnectedProviders(userId);
+  const calendarConnections = await userRepository.getCalendarConnections(userId);
 
   const serverCalendars: CalendarEventData[] = [];
-  for (const provider of providers) {
+  for (const { provider } of calendarConnections) {
     const events: CalendarEvent[] = [];
     let allCovered = true;
     for (const window of windows) {
@@ -79,20 +80,38 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  return { serverCalendars, view, ref };
+  return { serverCalendars, calendarConnections, view, ref };
 }
 
 // The action is an authenticated write surface, so the JSON body is untrusted
 // until validated. `typeof null === "object"`, so every object field needs an
 // explicit null check before it can be trusted as a CacheEntry.
-function isValidCacheEntry(body: unknown): body is CacheEntry {
+interface CacheWarmRequest extends CacheEntry {
+  calendarConnectionId: string;
+  accessToken: string;
+}
+
+function isValidCacheEntry(body: unknown): body is CacheWarmRequest {
   if (typeof body !== "object" || body === null) return false;
   const b = body as Record<string, unknown>;
-  if (typeof b.calendarId !== "string" || typeof b.fetchedAt !== "string") return false;
+  if (
+    typeof b.calendarId !== "string" ||
+    typeof b.calendarConnectionId !== "string" ||
+    typeof b.accessToken !== "string" ||
+    typeof b.fetchedAt !== "string"
+  ) {
+    return false;
+  }
   if (!Array.isArray(b.events)) return false;
   if (typeof b.range !== "object" || b.range === null) return false;
   const r = b.range as Record<string, unknown>;
   return typeof r.start === "string" && typeof r.end === "string";
+}
+
+function isCalendarConnectionGoneError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "P2003" || code === "P2025";
 }
 
 /**
@@ -112,33 +131,51 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const connected = await userRepository.getConnectedProviders(userId);
-  if (!connected.includes(body.calendarId)) {
+  const connection = await userRepository.getCalendarConnection(userId, body.calendarConnectionId);
+  if (!connection || connection.provider !== body.calendarId) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await serverEventCache.set(userId, body);
+  try {
+    const { fetchGoogleUserId, fetchOutlookUserId } = await import("../lib/userInfo.server");
+    const providerUserId =
+      connection.provider === "google"
+        ? await fetchGoogleUserId(body.accessToken)
+        : connection.provider === "outlook"
+          ? await fetchOutlookUserId(body.accessToken)
+          : null;
+    if (providerUserId !== connection.providerUserId) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } catch {
+    return Response.json({ error: "Unable to verify calendar credential" }, { status: 401 });
+  }
+
+  try {
+    await serverEventCache.set(userId, connection.id, body);
+  } catch (error: unknown) {
+    if (isCalendarConnectionGoneError(error)) {
+      return Response.json({ error: "Calendar is no longer connected" }, { status: 409 });
+    }
+    return Response.json({ error: "Failed to persist calendar events" }, { status: 503 });
+  }
   return Response.json({ ok: true });
 }
 
 export default function Home() {
-  const { serverCalendars, view: loaderView, ref: loaderRef } = useLoaderData<typeof loader>();
+  const {
+    serverCalendars,
+    calendarConnections,
+    view: loaderView,
+    ref: loaderRef,
+  } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const fetcher = useFetcher();
 
-  const isAuthenticated = useIsAuthenticated();
   const view = (searchParams.get("view") ?? loaderView) as TimeView;
   // ref falls back to loader default (today) when the URL has no param yet.
   const refStr = searchParams.get("ref") ?? loaderRef;
   const reference = useMemo(() => new Date(refStr), [refStr]);
-
-  // Dev builds bypass the gate so the dev fixture is reachable without OAuth.
-  useEffect(() => {
-    if (!isAuthenticated && isProduction()) {
-      navigate("/sign-in", { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showTimeLapse, setShowTimeLapse] = useShowTimeLapse();
@@ -152,7 +189,7 @@ export default function Home() {
   // CacheEntry to the route action. React Router then revalidates the loader
   // automatically, turning the cold DB into a warm one for future navigations.
   const handleFetched = useCallback(
-    (entry: CacheEntry) => {
+    (entry: FetchedCalendarEntry) => {
       fetcher.submit(JSON.stringify(entry), {
         method: "POST",
         encType: "application/json",
@@ -166,6 +203,7 @@ export default function Home() {
   // Disabled when the server already has fresh data for every connected calendar.
   const { calendars: hookCalendars, failedCalendars } = useCalendarTimeline(view, reference, {
     enabled: isColdCache,
+    calendarConnections,
     onFetched: handleFetched,
   });
 

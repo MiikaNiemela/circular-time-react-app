@@ -1,15 +1,55 @@
 /**
- * Abstract repository interface for user persistence.
+ * Abstract repository interface for application-account persistence.
  * Business logic targets this interface; the concrete driver is swappable
  * without modifying callers — required for portability across cloud platforms.
  */
 
+/** Reports whether a provider identity can be linked without account merging. */
+export type ProviderAccountLinkResult = "linked" | "conflict";
+/** Reports whether calendar access was connected without an ownership conflict. */
+export type CalendarConnectionResult = "connected" | "conflict";
+
+/** Reports whether a sign-in identity established a session or is calendar-only. */
+export type ProviderSignInResult =
+  | { kind: "signed-in"; userId: string }
+  | { kind: "calendar-only" };
+
+/** An active calendar identity authorized for a specific application account. */
+export interface CalendarConnection {
+  id: string;
+  provider: string;
+  providerUserId: string;
+}
+
 /**
- * Retrieves or creates a user record keyed by OAuth provider identity,
- * returning the stable database user ID (UUID).
+ * Contract for application-account persistence.
  */
 export interface UserRepository {
-  upsertUser(provider: string, providerUserId: string): Promise<string>;
-  /** Returns the provider IDs (e.g. `"google"`, `"outlook"`) linked to a user. */
+  /** Resolves a provider identity atomically, without allowing a calendar-only identity to establish an application session. */
+  signInWithProvider(provider: string, providerUserId: string): Promise<ProviderSignInResult>;
+  /** Links a provider identity to an existing account without merging accounts. */
+  linkProviderAccount(
+    userId: string,
+    provider: string,
+    providerUserId: string
+  ): Promise<ProviderAccountLinkResult>;
+  /** Creates a separate verified calendar connection; it cannot establish an application session. */
+  connectCalendarProvider(
+    userId: string,
+    provider: string,
+    providerUserId: string
+  ): Promise<CalendarConnectionResult>;
+  /** Removes one provider's calendar connection and all of its cached events without changing application identities. */
+  disconnectCalendarProvider(userId: string, provider: string): Promise<void>;
+  /** Returns one active connection only when its immutable ID belongs to the user. */
+  getCalendarConnection(
+    userId: string,
+    calendarConnectionId: string
+  ): Promise<CalendarConnection | null>;
+  /** Returns a provider's immutable calendar-connection ID for an authorized cache write. */
+  getCalendarConnectionId(userId: string, provider: string): Promise<string | null>;
+  /** Returns each provider's immutable ID and identity for a user's active calendar connections. */
+  getCalendarConnections(userId: string): Promise<CalendarConnection[]>;
+  /** Returns the provider IDs (e.g. `"google"`, `"outlook"`) with active calendar access. */
   getConnectedProviders(userId: string): Promise<string[]>;
 }

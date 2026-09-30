@@ -1,9 +1,48 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+
+const providerAuthMocks = vi.hoisted(() => ({
+  startGoogleCalendarConnection: vi.fn(),
+  startOutlookCalendarConnection: vi.fn(),
+  fetch: vi.fn(),
+}));
+
+const tokenStoreMocks = vi.hoisted(() => ({
+  googleToken: null as { accessToken: string; expiresAt?: number } | null,
+  outlookToken: null as { accessToken: string; expiresAt?: number } | null,
+}));
+
+vi.mock("../lib/providerAuth", () => providerAuthMocks);
+vi.mock("../data/providers/google", () => ({
+  GoogleTokenStore: class {
+    get() {
+      return tokenStoreMocks.googleToken;
+    }
+    set(token: { accessToken: string; expiresAt?: number }) {
+      tokenStoreMocks.googleToken = token;
+    }
+    clear() {
+      tokenStoreMocks.googleToken = null;
+    }
+  },
+}));
+vi.mock("../data/providers/outlook", () => ({
+  OutlookTokenStore: class {
+    get() {
+      return tokenStoreMocks.outlookToken;
+    }
+    set(token: { accessToken: string; expiresAt?: number }) {
+      tokenStoreMocks.outlookToken = token;
+    }
+    clear() {
+      tokenStoreMocks.outlookToken = null;
+    }
+  },
+}));
+
 import Settings from "./settings";
 import { ThemeProvider } from "../components/ThemeProvider";
-import { GoogleTokenStore } from "../data/providers/google";
 
 function renderSettings() {
   return render(
@@ -20,11 +59,30 @@ function renderSettings() {
 // OAuth, and iCal is a not-yet-implemented placeholder (Milestone 3.5), so none
 // of them flip a provider to "connected" inline. Visibility defaults to true.
 function connectGoogle() {
-  new GoogleTokenStore().set({ accessToken: "at", expiresAt: Date.now() + 3_600_000 });
+  tokenStoreMocks.googleToken = { accessToken: "at", expiresAt: Date.now() + 3_600_000 };
 }
 
 describe("Settings route", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    tokenStoreMocks.googleToken = null;
+    tokenStoreMocks.outlookToken = null;
+    vi.clearAllMocks();
+    providerAuthMocks.startGoogleCalendarConnection.mockResolvedValue(
+      "https://accounts.google.com/oauth"
+    );
+    providerAuthMocks.startOutlookCalendarConnection.mockResolvedValue(
+      "https://login.microsoftonline.com/oauth"
+    );
+    providerAuthMocks.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", providerAuthMocks.fetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it("renders a calendar list with three providers", () => {
     const { getByText } = renderSettings();
@@ -53,7 +111,25 @@ describe("Settings route", () => {
     alertSpy.mockRestore();
   });
 
-  it("a connected calendar shows Disconnect and a visibility toggle", () => {
+  it("starts an explicit Google calendar-connection flow", async () => {
+    const { getAllByRole } = renderSettings();
+    fireEvent.click(getAllByRole("button", { name: "Connect" })[0]);
+
+    await waitFor(() =>
+      expect(providerAuthMocks.startGoogleCalendarConnection).toHaveBeenCalledOnce()
+    );
+  });
+
+  it("starts an explicit Outlook calendar-connection flow", async () => {
+    const { getAllByRole } = renderSettings();
+    fireEvent.click(getAllByRole("button", { name: "Connect" })[1]);
+
+    await waitFor(() =>
+      expect(providerAuthMocks.startOutlookCalendarConnection).toHaveBeenCalledOnce()
+    );
+  });
+
+  it("a connected calendar shows Disconnect and a visibility toggle", async () => {
     connectGoogle();
     const { getByText, getByRole, getByLabelText } = renderSettings();
     expect(getByText("Connected")).toBeTruthy();
@@ -70,11 +146,17 @@ describe("Settings route", () => {
     expect(toggle.checked).toBe(false);
   });
 
-  it("disconnecting a provider resets it to not connected", () => {
+  it("disconnects a provider through the authenticated server endpoint before clearing browser state", async () => {
     connectGoogle();
     const { getByRole, getAllByText } = renderSettings();
     fireEvent.click(getByRole("button", { name: "Disconnect" }));
-    expect(getAllByText("Not connected").length).toBe(3);
+
+    await waitFor(() => expect(providerAuthMocks.fetch).toHaveBeenCalledOnce());
+    const [url, request] = providerAuthMocks.fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/auth/calendar-disconnection");
+    expect(request).toMatchObject({ method: "POST" });
+    expect(JSON.parse(String(request.body))).toEqual({ provider: "google" });
+    await waitFor(() => expect(getAllByText("Not connected").length).toBe(3));
   });
 
   it("has a back link to the home route", () => {

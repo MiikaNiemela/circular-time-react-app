@@ -24,7 +24,7 @@ const RANGE = {
 
 function storeWith(tokens: object): GoogleTokenStore {
   const store = new GoogleTokenStore(memoryStorage());
-  store.set(tokens as never);
+  store.set({ ...tokens, calendarConnectionId: "connection-uuid" } as never);
   return store;
 }
 

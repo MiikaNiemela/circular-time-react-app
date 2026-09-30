@@ -1,6 +1,6 @@
 // Prisma schema for Circular Time.
-// Use `npx prisma migrate dev` to apply migrations to a local database.
-// Use `npx prisma migrate deploy` in CI/production.
+// Apply migrations locally with `npx prisma migrate dev`.
+// Apply committed migrations with `npx prisma migrate deploy`.
 // Use `npx prisma generate` after schema changes to regenerate the client.
 
 generator client {
@@ -12,12 +12,14 @@ datasource db {
 }
 
 model User {
-  id                String             @id @default(uuid())
-  createdAt         DateTime           @default(now())
-  accounts          ProviderAccount[]
-  cachedEventRanges CachedEventRange[]
+  id                  String               @id @default(uuid())
+  createdAt           DateTime             @default(now())
+  accounts            ProviderAccount[]
+  calendarConnections CalendarConnection[]
+  cachedEventRanges   CachedEventRange[]
 }
 
+// Provider identities used to create application sessions.
 model ProviderAccount {
   id             String   @id @default(uuid())
   provider       String
@@ -27,6 +29,22 @@ model ProviderAccount {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+}
+
+// Calendar identities are separate from application sign-in identities.
+model CalendarConnection {
+  id                String             @id @default(uuid())
+  provider          String
+  providerUserId    String
+  userId            String
+  createdAt         DateTime           @default(now())
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cachedEventRanges CachedEventRange[]
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@unique([id, userId])
 }
 
 model CachedEventRange {
@@ -38,7 +56,10 @@ model CachedEventRange {
   fetchedAt  DateTime @default(now())
   eventsJson String
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarConnectionId String?
+  calendarConnection   CalendarConnection? @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([userId, calendarId, rangeStart, rangeEnd])
+  @@index([calendarConnectionId])
 }

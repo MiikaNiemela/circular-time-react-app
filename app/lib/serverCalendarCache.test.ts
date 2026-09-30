@@ -39,7 +39,13 @@ describe("ServerCalendarCache", () => {
       get: cacheGet as ServerEventCache["get"],
       set: cacheSet as ServerEventCache["set"],
     } as ServerEventCache;
-    wrapper = new ServerCalendarCache(provider, cache, "user-uuid", () => PAST_NOW);
+    wrapper = new ServerCalendarCache(
+      provider,
+      cache,
+      "user-uuid",
+      "connection-uuid",
+      () => PAST_NOW
+    );
   });
 
   it("delegates id and name to the underlying provider", () => {
@@ -68,6 +74,7 @@ describe("ServerCalendarCache", () => {
     expect(providerFetchEvents).toHaveBeenCalledWith(WINDOW);
     expect(cacheSet).toHaveBeenCalledWith(
       "user-uuid",
+      "connection-uuid",
       expect.objectContaining({
         calendarId: "google",
         range: WINDOW,
@@ -89,6 +96,7 @@ describe("ServerCalendarCache", () => {
       },
       { get: cacheGet as ServerEventCache["get"], set: cacheSet as ServerEventCache["set"] },
       "user-uuid",
+      "connection-uuid",
       () => staleNow
     );
     const entry: CacheEntry = {

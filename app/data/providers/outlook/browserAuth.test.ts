@@ -28,6 +28,19 @@ describe("startOutlookAuth", () => {
     expect(storage.getItem("circular-time-outlook-pkce-state")).toBe(state);
     expect(storage.getItem("circular-time-outlook-pkce-verifier")).toBeTruthy();
   });
+  it("uses the requested scope for an identity-only sign-in", async () => {
+    const storage = memoryStorage();
+    const url = new URL(
+      await startOutlookAuth({
+        clientId: "cid",
+        redirectUri: "https://app/cb",
+        scope: "openid profile email User.Read",
+        storage,
+      })
+    );
+
+    expect(url.searchParams.get("scope")).toBe("openid profile email User.Read");
+  });
 });
 
 describe("completeOutlookAuth", () => {
@@ -53,6 +66,8 @@ describe("completeOutlookAuth", () => {
       state,
       storage,
       tokenStore,
+      persistTokens: true,
+      calendarConnectionId: "connection-uuid",
       fetchFn: fetchFn as unknown as typeof fetch,
     });
 
@@ -60,6 +75,31 @@ describe("completeOutlookAuth", () => {
     expect(tokenStore.get()?.accessToken).toBe("at");
     expect(storage.getItem("circular-time-outlook-pkce-state")).toBeNull();
     expect(storage.getItem("circular-time-outlook-pkce-verifier")).toBeNull();
+  });
+
+  it("does not persist calendar tokens for an identity-only sign-in", async () => {
+    const storage = memoryStorage();
+    await startOutlookAuth({ clientId: "cid", redirectUri: "https://app/cb", storage });
+    const state = storage.getItem("circular-time-outlook-pkce-state")!;
+    const tokenStore = new OutlookTokenStore(memoryStorage());
+
+    await completeOutlookAuth({
+      clientId: "cid",
+      redirectUri: "https://app/cb",
+      code: "authcode",
+      state,
+      storage,
+      tokenStore,
+      persistTokens: false,
+      fetchFn: (async () =>
+        jsonResponse({
+          access_token: "identity-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        })) as unknown as typeof fetch,
+    });
+
+    expect(tokenStore.get()).toBeNull();
   });
 
   it("rejects a mismatched state", async () => {

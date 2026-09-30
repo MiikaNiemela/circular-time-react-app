@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { startGoogleSignIn, startOutlookSignIn } from "./providerAuth";
+import {
+  startGoogleCalendarConnection,
+  startGoogleSignIn,
+  startOutlookCalendarConnection,
+  startOutlookSignIn,
+} from "./providerAuth";
 
 const mocks = vi.hoisted(() => ({
   isGoogleConfigured: vi.fn(() => true),
@@ -36,9 +41,13 @@ vi.mock("./authState", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.isGoogleConfigured.mockReturnValue(true);
-  mocks.startGoogleAuth.mockResolvedValue("https://accounts.google.com/oauth");
+  mocks.startGoogleAuth.mockResolvedValue(
+    "https://accounts.google.com/oauth?state=google-pkce-state"
+  );
   mocks.isOutlookConfigured.mockReturnValue(true);
-  mocks.startOutlookAuth.mockResolvedValue("https://login.microsoftonline.com/oauth");
+  mocks.startOutlookAuth.mockResolvedValue(
+    "https://login.microsoftonline.com/oauth?state=outlook-pkce-state"
+  );
 });
 
 describe("startGoogleSignIn", () => {
@@ -51,17 +60,34 @@ describe("startGoogleSignIn", () => {
 
   it("returns the auth URL when Google is configured", async () => {
     const url = await startGoogleSignIn();
-    expect(url).toBe("https://accounts.google.com/oauth");
+    expect(url).toBe("https://accounts.google.com/oauth?state=google-pkce-state");
   });
 
   it("stores the returnTo path before starting OAuth", async () => {
     await startGoogleSignIn({ returnTo: "/timeline" });
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/timeline");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/timeline",
+      provider: "google",
+      oauthState: "google-pkce-state",
+    });
   });
 
   it("defaults returnTo to '/' when not provided", async () => {
     await startGoogleSignIn();
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/",
+      provider: "google",
+      oauthState: "google-pkce-state",
+    });
+  });
+  it("uses identity-only scopes for sign-in", async () => {
+    await startGoogleSignIn();
+
+    expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "openid email profile" })
+    );
   });
 });
 
@@ -75,16 +101,84 @@ describe("startOutlookSignIn", () => {
 
   it("returns the auth URL when Outlook is configured", async () => {
     const url = await startOutlookSignIn();
-    expect(url).toBe("https://login.microsoftonline.com/oauth");
+    expect(url).toBe("https://login.microsoftonline.com/oauth?state=outlook-pkce-state");
   });
 
   it("stores the returnTo path before starting OAuth", async () => {
     await startOutlookSignIn({ returnTo: "/timeline" });
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/timeline");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/timeline",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
+    });
   });
 
   it("defaults returnTo to '/' when not provided", async () => {
     await startOutlookSignIn();
-    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith("/");
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "sign-in",
+      returnTo: "/",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
+    });
+  });
+
+  it("uses identity-only scopes for sign-in", async () => {
+    await startOutlookSignIn();
+
+    expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "openid profile email User.Read" })
+    );
+  });
+});
+
+describe("startGoogleCalendarConnection", () => {
+  it("records a provider-bound calendar-connection intent and requests the calendar scope", async () => {
+    await startGoogleCalendarConnection();
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "connect-calendar",
+      returnTo: "/settings",
+      provider: "google",
+      oauthState: "google-pkce-state",
+    });
+    expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      })
+    );
+  });
+
+  it("returns null without recording state when Google is not configured", async () => {
+    mocks.isGoogleConfigured.mockReturnValue(false);
+
+    await expect(startGoogleCalendarConnection()).resolves.toBeNull();
+    expect(mocks.setPostAuthRedirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("startOutlookCalendarConnection", () => {
+  it("records a provider-bound calendar-connection intent and requests the calendar scope", async () => {
+    await startOutlookCalendarConnection();
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "connect-calendar",
+      returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
+    });
+    expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "openid profile email User.Read Calendars.Read offline_access",
+      })
+    );
+  });
+
+  it("returns null without recording state when Outlook is not configured", async () => {
+    mocks.isOutlookConfigured.mockReturnValue(false);
+
+    await expect(startOutlookCalendarConnection()).resolves.toBeNull();
+    expect(mocks.setPostAuthRedirect).not.toHaveBeenCalled();
   });
 });

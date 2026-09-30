@@ -20,12 +20,15 @@ function sessionStore(): KeyValueStorage {
 export interface StartAuthOptions {
   clientId: string;
   redirectUri: string;
+  /** OAuth scopes requested for this flow; defaults to calendar access. */
+  scope?: string;
   storage?: KeyValueStorage;
 }
 
 export async function startOutlookAuth({
   clientId,
   redirectUri,
+  scope,
   storage = sessionStore(),
 }: StartAuthOptions): Promise<string> {
   const verifier = generateCodeVerifier();
@@ -35,7 +38,7 @@ export async function startOutlookAuth({
   storage.setItem(VERIFIER_KEY, verifier);
   storage.setItem(STATE_KEY, state);
 
-  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state });
+  return buildAuthUrl({ clientId, redirectUri, codeChallenge, state, scope });
 }
 
 export interface CompleteAuthOptions {
@@ -45,6 +48,10 @@ export interface CompleteAuthOptions {
   state: string;
   storage?: KeyValueStorage;
   tokenStore?: OutlookTokenStore;
+  /** Server-issued connection ID required before a browser token can be persisted. */
+  calendarConnectionId?: string;
+  /** False by default; only a confirmed calendar connection may persist tokens. */
+  persistTokens?: boolean;
   fetchFn?: typeof fetch;
 }
 
@@ -55,6 +62,8 @@ export async function completeOutlookAuth({
   state,
   storage = sessionStore(),
   tokenStore = new OutlookTokenStore(),
+  calendarConnectionId,
+  persistTokens = false,
   fetchFn = fetch,
 }: CompleteAuthOptions): Promise<OutlookTokens> {
   const expectedState = storage.getItem(STATE_KEY);
@@ -74,7 +83,12 @@ export async function completeOutlookAuth({
     codeVerifier: verifier,
     fetchFn,
   });
-  tokenStore.set(tokens);
+  if (persistTokens) {
+    if (!calendarConnectionId) {
+      throw new Error("Cannot persist calendar tokens without a confirmed calendar connection");
+    }
+    tokenStore.set({ ...tokens, calendarConnectionId });
+  }
 
   storage.removeItem(VERIFIER_KEY);
   storage.removeItem(STATE_KEY);

@@ -39,9 +39,10 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 
 | Feature | Status | Origin | Notes |
 |---|---|---|---|
-| Authentication gate | ✅ | **new** | Unauthenticated visitors are redirected to `sign-in.tsx`; Google/Outlook accounts double as identity providers. Dev builds bypass the gate. |
+| Authentication gate | ✅ | **new** | Unauthenticated visitors are redirected to `sign-in.tsx`; Google/Outlook accounts provide identity only. Dev builds bypass the gate. |
+| Separate calendar connection | ✅ | **new** | Settings starts a separate Google or Outlook calendar-read consent flow for the authenticated application account; provider identity and calendar-read access are verified before storage in a calendar-connection record separate from identities that establish application sessions. Disconnect removes the calendar connection and cached events without changing application sign-in identities. |
 | Server-side session | ✅ | **new** | Signed, HTTP-only cookie (`session.server.ts`) maps each request to a stable user ID without touching `localStorage`. |
-| Persistent user store | ✅ | **new** | User records and linked provider accounts in PostgreSQL via Prisma, behind a `userRepository` interface so the driver stays swappable. |
+| Persistent user store | ✅ | **new** | User records, application sign-in provider accounts, and calendar connections in PostgreSQL via Prisma, behind a `userRepository` interface so the driver stays swappable. |
 | Server-side event cache | ✅ | **new** | Calendar events persisted in Postgres, keyed by user + provider + time range; shared across devices; past data never auto-removed. Replaces the old per-device `localStorage` cache. |
 | Server-driven data flow | ✅ | **new** | The timeline reads events from a server `loader`; the client only fetches from provider APIs to warm a cold cache, then POSTs results to a route action. `useCalendarTimeline` is reduced to that optimistic warmer. |
 
@@ -52,7 +53,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Feature | Status | Origin | Notes |
 |---|---|---|---|
 | Timeline view (main screen) | ✅ | carried over | `app/routes/home.tsx`. |
-| Settings view | ✅ | carried over | `app/routes/settings.tsx` with real auth and per-calendar toggles. |
+| Settings view | ✅ | carried over | `app/routes/settings.tsx` starts provider calendar connections and controls per-calendar visibility. |
 | Navigation between views | ✅ | carried over | React Router links; `PeriodNavigator` for browsing periods within a view. |
 | Light / dark mode | ✅ | carried over | vanilla-extract theme contract + `DarkModeToggle`. |
 | Responsive layout (mobile → large desktop) | ✅ | **new** | SVG scales to its container; layout adapts across breakpoints. Confirmed in the 4.2 parity pass. |

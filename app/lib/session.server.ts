@@ -13,13 +13,18 @@ type SessionData = {
   userId: string;
 };
 
+const sessionSecret = process.env.SESSION_SECRET;
+if (process.env.NODE_ENV === "production" && !sessionSecret) {
+  throw new Error("SESSION_SECRET must be set in production");
+}
+
 const { getSession, commitSession, destroySession } = createCookieSessionStorage<SessionData>({
   cookie: {
     name: "__session",
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    secrets: [process.env.SESSION_SECRET ?? "dev-secret-change-in-production"],
+    secrets: [sessionSecret ?? "dev-secret-change-in-production"],
     // Secure flag on in production; off in dev so http://localhost works.
     secure: process.env.NODE_ENV === "production",
     maxAge: 30 * 24 * 60 * 60,
