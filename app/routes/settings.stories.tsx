@@ -4,9 +4,7 @@ import { createRoutesStub } from "react-router";
 import Settings from "./settings";
 import { ThemeProvider } from "../components/ThemeProvider";
 
-// LocalStorage keys — must match the constants in the provider and visibility files.
-const GOOGLE_TOKENS_KEY = "circular-time-google-tokens";
-const OUTLOOK_TOKENS_KEY = "circular-time-outlook-tokens";
+// Must match the constant in app/data/calendarVisibility.ts.
 const VISIBILITY_KEY = "circular-time-calendar-visibility";
 
 function HomeStub() {
@@ -28,7 +26,17 @@ const SignedInSettingsStub = createRoutesStub([
   {
     path: "/settings",
     Component: Settings as never,
-    loader: () => ({ signInProviders: ["google"] }),
+    loader: () => ({ signInProviders: ["google"], connectedProviders: [] }),
+  },
+]);
+
+/** Settings for a signed-in account with a server-side Google calendar connection. */
+const GoogleConnectedSettingsStub = createRoutesStub([
+  { path: "/", Component: HomeStub },
+  {
+    path: "/settings",
+    Component: Settings as never,
+    loader: () => ({ signInProviders: ["google"], connectedProviders: ["google"] }),
   },
 ]);
 
@@ -51,19 +59,17 @@ export default meta;
 
 type Story = StoryObj<typeof Settings>;
 
-/** No tokens in localStorage — all three calendar rows show a Connect button. */
+/** No calendar connections — all three calendar rows show a Connect button. */
 export const AllDisconnected: Story = {
   beforeEach: () => {
-    localStorage.removeItem(GOOGLE_TOKENS_KEY);
-    localStorage.removeItem(OUTLOOK_TOKENS_KEY);
     localStorage.removeItem(VISIBILITY_KEY);
   },
   render: renderSettings,
 };
 
 /**
- * Google Calendar is pre-connected (token seeded in localStorage before the
- * component mounts). The visibility toggle is checked by default.
+ * Google Calendar is connected on the server (the loader reports it). The
+ * visibility toggle is checked by default.
  *
  * The `play` function toggles the switch off, asserts the checkbox is
  * unchecked, then toggles it back on — verifying the toggle wires through to
@@ -71,25 +77,19 @@ export const AllDisconnected: Story = {
  */
 export const GoogleConnected: Story = {
   beforeEach: () => {
-    localStorage.setItem(
-      GOOGLE_TOKENS_KEY,
-      JSON.stringify({
-        accessToken: "mock-access-token",
-        expiresAt: Date.now() + 3_600_000,
-        calendarConnectionId: "storybook-google-connection",
-      })
-    );
-    return () => {
-      localStorage.removeItem(GOOGLE_TOKENS_KEY);
-      localStorage.removeItem(VISIBILITY_KEY);
-    };
+    localStorage.removeItem(VISIBILITY_KEY);
+    return () => localStorage.removeItem(VISIBILITY_KEY);
   },
-  render: renderSettings,
+  render: () => (
+    <ThemeProvider>
+      <GoogleConnectedSettingsStub initialEntries={["/settings"]} />
+    </ThemeProvider>
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // The checkbox itself is visually hidden (opacity:0 CSS toggle); click the
     // wrapping <label> so the pointer lands on its visible 36×20 px area.
-    const checkbox = canvas.getByRole("checkbox", { name: "Enable Google Calendar" });
+    const checkbox = await canvas.findByRole("checkbox", { name: "Enable Google Calendar" });
     const label = checkbox.closest("label") as HTMLElement;
     expect(checkbox).toBeChecked();
     await userEvent.click(label);

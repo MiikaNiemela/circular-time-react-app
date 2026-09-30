@@ -1,43 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { OutlookCalendarProvider } from "./OutlookCalendarProvider";
-import { OutlookTokenStore } from "./tokenStore";
-import type { KeyValueStorage } from "../../cache";
-
-function memoryStorage(): KeyValueStorage {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, v),
-    removeItem: (k) => void map.delete(k),
-  };
-}
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
 }
 
-const FUTURE = Date.now() + 3_600_000;
 const RANGE = { start: "2026-06-19T00:00:00Z", end: "2026-06-20T00:00:00Z" };
 
-function storeWith(tokens: object): OutlookTokenStore {
-  const store = new OutlookTokenStore(memoryStorage());
-  store.set({ ...tokens, calendarConnectionId: "connection-uuid" } as never);
-  return store;
-}
+const token = (value = "at") => vi.fn(async () => value);
 
 describe("OutlookCalendarProvider", () => {
   it("has correct identity", () => {
-    const p = new OutlookCalendarProvider({ clientId: "c" });
+    const p = new OutlookCalendarProvider({ accessToken: token() });
     expect(p.id).toBe("outlook");
     expect(p.name).toBe("Outlook / Microsoft 365");
-  });
-
-  it("throws when not connected", async () => {
-    const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: new OutlookTokenStore(memoryStorage()),
-    });
-    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/not connected/);
   });
 
   it("fetches and maps timed events", async () => {
@@ -55,8 +31,7 @@ describe("OutlookCalendarProvider", () => {
       })
     );
     const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     const events = await p.fetchEvents(RANGE);
@@ -87,8 +62,7 @@ describe("OutlookCalendarProvider", () => {
       })
     );
     const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     const [evt] = await p.fetchEvents(RANGE);
@@ -109,8 +83,7 @@ describe("OutlookCalendarProvider", () => {
       })
     );
     const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     expect((await p.fetchEvents(RANGE))[0].title).toBe("(no subject)");
@@ -119,50 +92,47 @@ describe("OutlookCalendarProvider", () => {
   it("returns [] when no items", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({}));
     const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     expect(await p.fetchEvents(RANGE)).toEqual([]);
   });
 
-  it("refreshes expired access token before fetching", async () => {
-    const fetchFn = vi
-      .fn(async (_url: string, _init?: RequestInit) => jsonResponse({}))
-      .mockResolvedValueOnce(
-        jsonResponse({ access_token: "fresh", expires_in: 3600, token_type: "Bearer" })
-      )
-      .mockResolvedValueOnce(jsonResponse({ value: [] }));
-
-    const store = storeWith({
-      accessToken: "stale",
-      refreshToken: "rt",
-      expiresAt: Date.now() - 1000,
-    });
-    const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: store,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await p.fetchEvents(RANGE);
-    expect((store as OutlookTokenStore).get()?.accessToken).toBe("fresh");
-  });
-
-  it("throws when expired and no refresh token", async () => {
-    const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "stale", expiresAt: Date.now() - 1000 }),
-    });
-    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
-  });
-
   it("throws on non-ok events response", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({}, false, 403));
     const p = new OutlookCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 403/);
+  });
+
+  it("asks the token supplier for a token on every fetch", async () => {
+    const accessToken = token("server-token");
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    const p = new OutlookCalendarProvider({
+      accessToken,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await p.fetchEvents(RANGE);
+
+    expect(accessToken).toHaveBeenCalledTimes(1);
+    expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer server-token",
+    });
+  });
+
+  it("propagates a credential failure without calling the API", async () => {
+    const fetchFn = vi.fn();
+    const p = new OutlookCalendarProvider({
+      accessToken: vi.fn(async () => {
+        throw new Error("Calendar credentials are missing; reconnect required");
+      }),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
