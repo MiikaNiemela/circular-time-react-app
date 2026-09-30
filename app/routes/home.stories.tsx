@@ -14,10 +14,11 @@ const HomeStub = createRoutesStub([
   {
     path: "/",
     Component: Home,
-    // Provide the loader data shape the component now expects from useLoaderData().
-    // Empty serverCalendars triggers the cold-cache path so the dev fixture renders.
+    // Provide the loader data shape the component expects from useLoaderData().
+    // No server calendars, so the development fixture renders.
     loader: () => ({
       serverCalendars: [],
+      failedCalendars: [],
       view: "day",
       ref: new Date().toISOString().slice(0, 10),
     }),
@@ -44,8 +45,8 @@ export default meta;
 type Story = StoryObj;
 
 /**
- * Dev fixture active: no OAuth tokens in localStorage so the fixture calendars
- * are injected, producing two event rings. Clicking a fixture event opens the
+ * Dev fixture active: the account has no connected calendars, so the fixture
+ * calendars are injected, producing two event rings. Clicking a fixture event opens the
  * EventDetail overlay — this exercises the click→detail flow without OAuth.
  *
  * Ring 1 (index 0) is the dev-google calendar (background grid is hidden by

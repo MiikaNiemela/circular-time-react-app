@@ -18,6 +18,7 @@ export class ServerCalendarCache implements CalendarProvider {
     private readonly provider: CalendarProvider,
     private readonly cache: ServerEventCache,
     private readonly userId: string,
+    private readonly calendarConnectionId: string,
     private readonly now: () => Date = () => new Date()
   ) {}
 
@@ -40,7 +41,7 @@ export class ServerCalendarCache implements CalendarProvider {
         continue;
       }
       const events = await this.provider.fetchEvents(window);
-      await this.cache.set(this.userId, {
+      await this.cache.set(this.userId, this.calendarConnectionId, {
         calendarId: this.provider.id,
         range: window,
         events,

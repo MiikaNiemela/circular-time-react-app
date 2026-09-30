@@ -2,9 +2,9 @@
 
 Where each piece of code runs, and how data crosses the browser/server boundary.
 
-The server is now the authoritative layer: a signed session identifies the user, and the timeline reads events from a server loader backed by a Postgres event cache. Provider API calls still happen in the browser (OAuth tokens stay client-side); the client warms the server cache by POSTing fetched events to a route action. See [architecture.md](architecture.md) for the layering and [features.md](features.md) for status.
+The server is the authoritative layer: a signed session identifies the user, the server runs the OAuth flows and keeps provider tokens encrypted in Postgres, and the timeline loader reads events through a Postgres event cache, fetching stale windows from the providers itself. The browser holds no provider tokens. See [architecture.md](architecture.md) for the layering and [features.md](features.md) for status.
 
-Route modules sit under **Browser** because that is where their components ultimately run; the server's role for them is the one-time SSR render plus executing their `loader`/`action` (the arrow from `home loader + action`).
+Route modules sit under **Browser** because that is where their components ultimately run; the server's role for them is the SSR render plus executing their `loader`/`action`.
 
 ```mermaid
 graph TD
@@ -13,36 +13,30 @@ graph TD
             signin["sign-in.tsx"]
             home["home.tsx"]
             settings["settings.tsx"]
-            cbs["OAuth callbacks\nauth.google · auth.outlook"]
             comps["Components\nMultiCircle · EventDetail · SegmentedControl · PeriodNavigator"]
         end
 
-        subgraph BL["Business Logic"]
-            hook["useCalendarTimeline\n(cold-cache warmer)"]
+        subgraph BLB["Business Logic"]
             lib["lib/\ncalendarTimeline · timeSlices · timeNavigation"]
         end
 
-        subgraph DP["Data Providers"]
-            gp["GoogleCalendarProvider"]
-            op["OutlookCalendarProvider"]
-        end
-
         subgraph CS["Client Storage"]
-            ls["localStorage\nGoogleTokenStore · OutlookTokenStore\nCalendarVisibilityStore"]
-            ss["sessionStorage\nPKCE verifier · PKCE state"]
+            ls["localStorage\ncalendar visibility · theme · time lapse"]
         end
     end
 
     subgraph CloudRun["Server — Cloud Run"]
-        ld["home loader + action\n(server-driven data flow)"]
+        ld["home loader\n(calendarReader)"]
+        flow["/auth/:provider/start + callback\n(oauthFlow.server)"]
         sess["session.server\n(signed HTTP-only cookie)"]
+        creds["calendarCredentials\n(AES-256-GCM)"]
         sec["serverEventCache · userRepository"]
-        proxy["/auth/google/token\nToken Proxy"]
-        sm["secretManager.server"]
+        dp["GoogleCalendarProvider · OutlookCalendarProvider"]
+        oc["oauthClient.server · clientSecrets.server"]
     end
 
     subgraph Data["Server Data"]
-        db[("Postgres\nvia Prisma\nusers · cached events")]
+        db[("Postgres via Prisma\nusers · sessions · credentials · cached events")]
     end
 
     subgraph Ext["External Services"]
@@ -53,27 +47,17 @@ graph TD
         msoauth["Microsoft OAuth"]
     end
 
-    ld -->|"SSR render"| signin & home & settings & cbs
-    home --> comps & hook
-    ld -->|"read cached events for user"| sec
-    home -->|"POST fetched events"| ld
-    sess -->|"resolve userId"| ld
-    sec --> db
-    sess --> db
-
-    settings -->|"read token presence"| ls
-    cbs -->|"read PKCE secrets"| ss
-    cbs -->|"write tokens; establish session"| ls
-    cbs -->|"POST code + verifier"| proxy
-    cbs -->|"token exchange"| goauth & msoauth
-
-    proxy --> sm --> gsm
-    proxy -->|"token exchange"| goauth
-
-    hook --> gp & op
-    hook -->|"read visibility"| ls
-    gp -->|"read token"| ls
-    gp --> gcal
-    op -->|"read token"| ls
-    op --> mggraph
+    signin & settings -->|"form POST"| flow
+    flow -->|"redirect"| goauth & msoauth
+    flow --> oc --> gsm
+    oc -->|"code exchange · refresh"| goauth & msoauth
+    flow --> sess & sec & creds
+    ld -->|"SSR render"| home & settings & signin
+    home --> comps & lib
+    home -->|"read visibility"| ls
+    ld --> sec & dp
+    dp -->|"access token"| creds
+    creds --> oc
+    dp --> gcal & mggraph
+    sess & sec & creds --> db
 ```
