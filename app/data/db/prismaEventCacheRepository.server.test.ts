@@ -3,7 +3,7 @@ import { PrismaEventCacheRepository } from "./prismaEventCacheRepository.server"
 import type { PrismaClient } from "@prisma/client";
 
 describe("PrismaEventCacheRepository", () => {
-  let findUnique: ReturnType<typeof vi.fn>;
+  let findFirst: ReturnType<typeof vi.fn>;
   let upsert: ReturnType<typeof vi.fn>;
   let repo: PrismaEventCacheRepository;
 
@@ -20,23 +20,23 @@ describe("PrismaEventCacheRepository", () => {
   const FETCHED_AT = new Date("2026-01-01T12:00:00Z");
 
   beforeEach(() => {
-    findUnique = vi.fn();
+    findFirst = vi.fn();
     upsert = vi.fn();
     const db = {
-      cachedEventRange: { findUnique, upsert },
+      cachedEventRange: { findFirst, upsert },
     } as unknown as PrismaClient;
     repo = new PrismaEventCacheRepository(db);
   });
 
   describe("get", () => {
     it("returns null when no record exists", async () => {
-      findUnique.mockResolvedValue(null);
+      findFirst.mockResolvedValue(null);
       const result = await repo.get("user-1", "google", RANGE);
       expect(result).toBeNull();
     });
 
     it("returns a CacheEntry when a record exists", async () => {
-      findUnique.mockResolvedValue({
+      findFirst.mockResolvedValue({
         calendarId: "google",
         rangeStart: RANGE.start,
         rangeEnd: RANGE.end,
@@ -53,16 +53,15 @@ describe("PrismaEventCacheRepository", () => {
     });
 
     it("queries by the exact userId, calendarId, and range boundaries", async () => {
-      findUnique.mockResolvedValue(null);
+      findFirst.mockResolvedValue(null);
       await repo.get("user-1", "outlook", RANGE);
-      expect(findUnique).toHaveBeenCalledWith({
+      expect(findFirst).toHaveBeenCalledWith({
         where: {
-          userId_calendarId_rangeStart_rangeEnd: {
-            userId: "user-1",
-            calendarId: "outlook",
-            rangeStart: RANGE.start,
-            rangeEnd: RANGE.end,
-          },
+          userId: "user-1",
+          calendarId: "outlook",
+          rangeStart: RANGE.start,
+          rangeEnd: RANGE.end,
+          calendarConnection: { isNot: null },
         },
       });
     });
@@ -77,7 +76,7 @@ describe("PrismaEventCacheRepository", () => {
         events: EVENTS,
         fetchedAt: FETCHED_AT.toISOString(),
       };
-      await repo.set("user-1", entry);
+      await repo.set("user-1", "connection-abc", entry);
       expect(upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -88,11 +87,19 @@ describe("PrismaEventCacheRepository", () => {
               rangeEnd: RANGE.end,
             },
           },
-          update: expect.objectContaining({ eventsJson: JSON.stringify(EVENTS) }),
+          update: expect.objectContaining({
+            eventsJson: JSON.stringify(EVENTS),
+            calendarConnection: {
+              connect: { id_userId: { id: "connection-abc", userId: "user-1" } },
+            },
+          }),
           create: expect.objectContaining({
-            userId: "user-1",
+            user: { connect: { id: "user-1" } },
             calendarId: "google",
             eventsJson: JSON.stringify(EVENTS),
+            calendarConnection: {
+              connect: { id_userId: { id: "connection-abc", userId: "user-1" } },
+            },
           }),
         })
       );

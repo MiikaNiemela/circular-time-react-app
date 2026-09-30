@@ -5,43 +5,40 @@ for one calendar source. Providers are pure data sources: given a `TimeRange`
 they return normalised `CalendarEvent[]`. Auth, caching, and refresh
 orchestration live above them.
 
-## `google/`
+## OAuth
 
-Google Calendar via OAuth 2.0 **Authorization Code + PKCE**. The browser does
-the full PKCE handshake, but Google "Web application" clients are _confidential_
-and require the `client_secret` on the token exchange even with PKCE (the spec
-allows secretless PKCE; Google's web client type does not — only its
-Desktop/iOS/Android types do, and those forbid `https://` redirect URIs).
+Google and Microsoft are both registered as confidential web clients. The
+server runs the whole OAuth 2.0 authorization-code flow with PKCE (see
+`app/lib/oauthFlow.server.ts`): it generates the verifier and state, redirects
+the browser to the provider, redeems the code with the client secret, and keeps
+the resulting tokens. The browser never receives a client secret or a provider
+token.
 
-So the token exchange/refresh is proxied through a same-origin server route
-(`routes/auth.google.token.tsx` → `tokenProxy.ts`) that injects the credentials
-server-side. The browser never sees the secret.
+| File                      | Responsibility                                                   |
+| ------------------------- | ---------------------------------------------------------------- |
+| `oauthClient.server.ts`   | Token endpoint client: code exchange and refresh, with a secret. |
+| `clientSecrets.server.ts` | Reads each client secret from Secret Manager by resource name.   |
+| `google/pkce.ts`          | Verifier/challenge/state generation (Web Crypto, S256).          |
+| `*/auth.ts`               | Scopes and the pure `buildAuthUrl` for each provider.            |
+| `*/config.ts`             | Client ID and redirect URI helpers.                              |
+| `*/…CalendarProvider.ts`  | `CalendarProvider` implementation: fetch and map events.         |
 
-Credentials:
+Providers take an `accessToken()` supplier instead of holding tokens, so the
+server decides where a valid token comes from (see
+`app/lib/calendarCredentials.ts`).
 
-- `VITE_GOOGLE_CLIENT_ID` — public client ID, build-time (browser).
-- `GOOGLE_CLIENT_ID` — server-side runtime configuration.
-- `GOOGLE_CLIENT_SECRET_RESOURCE` — runtime Secret Manager resource name. The
-  deployment environment resolves the secret; the browser never receives it.
+## Configuration
 
-Module layout (split so the whole flow is unit-testable without a browser or
-live Google — network calls take an injectable `fetch`):
+- `VITE_GOOGLE_CLIENT_ID`, `VITE_OUTLOOK_CLIENT_ID` — public client IDs, build
+  time.
+- `GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE` — runtime
+  Secret Manager resource names of the client secrets; the values are read at
+  runtime and never stored in the image or repository.
+- `TOKEN_ENCRYPTION_KEY` — 32-byte base64 key that encrypts stored provider
+  tokens (AES-256-GCM).
 
-| File                        | Responsibility                                                 |
-| --------------------------- | -------------------------------------------------------------- |
-| `pkce.ts`                   | Verifier/challenge/state generation (Web Crypto, S256).        |
-| `auth.ts`                   | Pure `buildAuthUrl` + injectable-fetch token exchange/refresh. |
-| `tokenStore.ts`             | Token persistence behind injectable storage; expiry check.     |
-| `browserAuth.ts`            | Cross-redirect orchestration (sessionStorage handshake).       |
-| `GoogleCalendarProvider.ts` | `CalendarProvider` impl: fetch + map events.                   |
-| `config.ts`                 | Build-time client ID + redirect URI helpers.                   |
-
-The OAuth round-trip is wired through `routes/auth.google.callback.tsx` and the
-"Connect" button in `routes/settings.tsx`.
-
-### Security note
-
-Tokens are stored in `localStorage` — the simplest option for a public PKCE
-client (chosen deliberately). The tradeoff is XSS exposure; there is no client
-secret to leak. To harden later, move `tokenStore.ts` behind an HttpOnly cookie
-set by a server route — the rest of the provider is unaffected.
+Each provider app registration lists `<origin>/auth/<provider>/callback` as a
+web redirect URI. The Microsoft registration uses the **Web** platform, not
+Single-page application: Microsoft only redeems single-page-application codes
+from a browser, and issues those clients refresh tokens that expire after 24
+hours.

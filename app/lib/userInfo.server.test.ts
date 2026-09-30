@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchGoogleUserId, fetchOutlookUserId } from "./userInfo.server";
+import {
+  fetchGoogleUserId,
+  fetchOutlookUserId,
+  verifyGoogleCalendarAccess,
+  verifyOutlookCalendarAccess,
+} from "./userInfo.server";
 
 function jsonFetch(body: unknown, status = 200): typeof fetch {
   return vi.fn(
@@ -26,6 +31,20 @@ describe("fetchGoogleUserId", () => {
   });
 });
 
+describe("verifyGoogleCalendarAccess", () => {
+  it("accepts a token that can list calendars", async () => {
+    await expect(
+      verifyGoogleCalendarAccess("calendar-token", jsonFetch({ items: [] }))
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a token without calendar-read authorization", async () => {
+    await expect(verifyGoogleCalendarAccess("identity-token", jsonFetch({}, 403))).rejects.toThrow(
+      "Google calendar access failed: 403"
+    );
+  });
+});
+
 describe("fetchOutlookUserId", () => {
   it("returns the id field on success", async () => {
     const id = await fetchOutlookUserId("tok", jsonFetch({ id: "outlook-user-abc" }));
@@ -41,6 +60,20 @@ describe("fetchOutlookUserId", () => {
   it("throws when id is missing from the response", async () => {
     await expect(fetchOutlookUserId("tok", jsonFetch({}))).rejects.toThrow(
       "Outlook /me response missing id field"
+    );
+  });
+});
+
+describe("verifyOutlookCalendarAccess", () => {
+  it("accepts a token that can list calendars", async () => {
+    await expect(
+      verifyOutlookCalendarAccess("calendar-token", jsonFetch({ value: [] }))
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a token without calendar-read authorization", async () => {
+    await expect(verifyOutlookCalendarAccess("identity-token", jsonFetch({}, 403))).rejects.toThrow(
+      "Outlook calendar access failed: 403"
     );
   });
 });

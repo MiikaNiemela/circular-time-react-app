@@ -1,6 +1,6 @@
 // Prisma schema for Circular Time.
-// Use `npx prisma migrate dev` to apply migrations to a local database.
-// Use `npx prisma migrate deploy` in CI/production.
+// Apply migrations locally with `npx prisma migrate dev`.
+// Apply committed migrations with `npx prisma migrate deploy`.
 // Use `npx prisma generate` after schema changes to regenerate the client.
 
 generator client {
@@ -12,12 +12,29 @@ datasource db {
 }
 
 model User {
-  id                String             @id @default(uuid())
-  createdAt         DateTime           @default(now())
-  accounts          ProviderAccount[]
-  cachedEventRanges CachedEventRange[]
+  id                  String               @id @default(uuid())
+  createdAt           DateTime             @default(now())
+  accounts            ProviderAccount[]
+  calendarConnections CalendarConnection[]
+  cachedEventRanges   CachedEventRange[]
+  sessions            Session[]
 }
 
+// Server-side application sessions. The cookie carries an opaque random token;
+// only its SHA-256 hash is stored, so a database copy cannot be replayed as a
+// cookie. Deleting a row revokes that session immediately.
+model Session {
+  id        String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Provider identities used to create application sessions.
 model ProviderAccount {
   id             String   @id @default(uuid())
   provider       String
@@ -27,6 +44,23 @@ model ProviderAccount {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+}
+
+// Calendar identities are separate from application sign-in identities.
+model CalendarConnection {
+  id                String             @id @default(uuid())
+  provider          String
+  providerUserId    String
+  userId            String
+  createdAt         DateTime           @default(now())
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cachedEventRanges CachedEventRange[]
+  credential        CalendarCredential?
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@unique([id, userId])
 }
 
 model CachedEventRange {
@@ -38,7 +72,23 @@ model CachedEventRange {
   fetchedAt  DateTime @default(now())
   eventsJson String
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarConnectionId String?
+  calendarConnection   CalendarConnection? @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([userId, calendarId, rangeStart, rangeEnd])
+  @@index([calendarConnectionId])
+}
+
+/// Provider OAuth tokens for one calendar connection, encrypted by the
+/// application (AES-256-GCM) and bound to the owning user and connection.
+/// Deleted with the connection, so disconnecting removes stored credentials.
+model CalendarCredential {
+  calendarConnectionId String             @id
+  userId               String
+  ciphertext           String
+  updatedAt            DateTime           @updatedAt
+  calendarConnection   CalendarConnection @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([calendarConnectionId, userId])
 }

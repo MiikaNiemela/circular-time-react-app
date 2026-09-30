@@ -1,46 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import { GoogleCalendarProvider } from "./GoogleCalendarProvider";
-import { GoogleTokenStore } from "./tokenStore";
-import type { KeyValueStorage } from "../../cache";
-
-function memoryStorage(): KeyValueStorage {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, v),
-    removeItem: (k) => void map.delete(k),
-  };
-}
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
 }
 
-const FUTURE = Date.now() + 3_600_000;
 const RANGE = {
   start: "2026-06-19T00:00:00Z",
   end: "2026-06-20T00:00:00Z",
 };
 
-function storeWith(tokens: object): GoogleTokenStore {
-  const store = new GoogleTokenStore(memoryStorage());
-  store.set(tokens as never);
-  return store;
-}
+const token = (value = "at") => vi.fn(async () => value);
 
 describe("GoogleCalendarProvider", () => {
   it("has the expected identity", () => {
-    const p = new GoogleCalendarProvider({ clientId: "c" });
+    const p = new GoogleCalendarProvider({ accessToken: token() });
     expect(p.id).toBe("google");
     expect(p.name).toBe("Google Calendar");
-  });
-
-  it("throws when not connected", async () => {
-    const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: new GoogleTokenStore(memoryStorage()),
-    });
-    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/not connected/);
   });
 
   it("fetches and maps timed events", async () => {
@@ -57,8 +33,7 @@ describe("GoogleCalendarProvider", () => {
       })
     );
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
 
@@ -94,8 +69,7 @@ describe("GoogleCalendarProvider", () => {
       })
     );
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
 
@@ -117,8 +91,7 @@ describe("GoogleCalendarProvider", () => {
       })
     );
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     const [evt] = await p.fetchEvents(RANGE);
@@ -128,60 +101,47 @@ describe("GoogleCalendarProvider", () => {
   it("returns [] when the API has no items", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({}));
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     expect(await p.fetchEvents(RANGE)).toEqual([]);
   });
 
-  it("refreshes an expired access token before fetching", async () => {
-    const fetchFn = vi
-      .fn(async (_url: string, _init?: RequestInit) => jsonResponse({}))
-      // First call: token refresh
-      .mockResolvedValueOnce(
-        jsonResponse({ access_token: "fresh", expires_in: 3600, token_type: "Bearer" })
-      )
-      // Second call: events list
-      .mockResolvedValueOnce(jsonResponse({ items: [] }));
-
-    const store = storeWith({
-      accessToken: "stale",
-      refreshToken: "rt",
-      expiresAt: Date.now() - 1000, // already expired
-    });
+  it("throws on a non-ok events response", async () => {
+    const fetchFn = vi.fn(async () => jsonResponse({}, false, 403));
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: store,
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 403/);
+  });
+
+  it("asks the token supplier for a token on every fetch", async () => {
+    const accessToken = token("server-token");
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    const p = new GoogleCalendarProvider({
+      accessToken,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
 
     await p.fetchEvents(RANGE);
 
-    // Token store updated with the refreshed access token.
-    expect(store.get()?.accessToken).toBe("fresh");
-    // Events request used the fresh token.
-    const [, eventsInit] = fetchFn.mock.calls[1];
-    expect((eventsInit as RequestInit).headers).toMatchObject({
-      Authorization: "Bearer fresh",
+    expect(accessToken).toHaveBeenCalledTimes(1);
+    expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer server-token",
     });
   });
 
-  it("throws when expired and no refresh token exists", async () => {
+  it("propagates a credential failure without calling the API", async () => {
+    const fetchFn = vi.fn();
     const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "stale", expiresAt: Date.now() - 1000 }),
-    });
-    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
-  });
-
-  it("throws on a non-ok events response", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse({}, false, 403));
-    const p = new GoogleCalendarProvider({
-      clientId: "c",
-      tokenStore: storeWith({ accessToken: "at", refreshToken: "rt", expiresAt: FUTURE }),
+      accessToken: vi.fn(async () => {
+        throw new Error("Calendar credentials are missing; reconnect required");
+      }),
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 403/);
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
