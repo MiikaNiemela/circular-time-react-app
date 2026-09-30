@@ -1,5 +1,10 @@
-/** Declares whether an OAuth completion signs in or connects a calendar. */
-export type OAuthIntent = "sign-in" | "connect-calendar";
+/**
+ * Declares what an OAuth completion does: sign in, link another sign-in
+ * identity to the current account, or connect a calendar.
+ */
+export type OAuthIntent = "sign-in" | "link-identity" | "connect-calendar";
+
+const OAUTH_INTENTS: readonly OAuthIntent[] = ["sign-in", "link-identity", "connect-calendar"];
 
 /** Holds one browser-local OAuth flow, bound to its provider and PKCE state. */
 export interface PendingOAuthFlow {
@@ -15,7 +20,7 @@ function isPendingOAuthFlow(value: unknown): value is PendingOAuthFlow {
   if (!value || typeof value !== "object") return false;
   const flow = value as Record<string, unknown>;
   return (
-    (flow.intent === "sign-in" || flow.intent === "connect-calendar") &&
+    OAUTH_INTENTS.includes(flow.intent as OAuthIntent) &&
     typeof flow.returnTo === "string" &&
     (flow.provider === "google" || flow.provider === "outlook") &&
     typeof flow.oauthState === "string" &&

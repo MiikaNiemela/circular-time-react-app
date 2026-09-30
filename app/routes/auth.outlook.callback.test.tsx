@@ -131,4 +131,42 @@ describe("Outlook OAuth callback", () => {
     });
     expect(mocks.navigate).toHaveBeenCalledWith("/settings", { replace: true });
   });
+
+  it("links an identity through its authenticated endpoint without storing calendar tokens", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue({
+      intent: "link-identity",
+      returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "oauth-state",
+    });
+    mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    render(<OutlookCallback />);
+
+    await waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith("/settings", { replace: true })
+    );
+    const [url, request] = mocks.fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/auth/identity-link");
+    expect(JSON.parse(String(request.body))).toEqual({
+      provider: "outlook",
+      accessToken: "identity-access-token",
+    });
+    expect(mocks.persistCalendarTokens).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's reason when an identity cannot be linked", async () => {
+    mocks.consumePostAuthRedirect.mockReturnValue({
+      intent: "link-identity",
+      returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "oauth-state",
+    });
+    mocks.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Accounts are never merged." }), { status: 409 })
+    );
+    const { findByText } = render(<OutlookCallback />);
+
+    await findByText("Accounts are never merged.");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
 });

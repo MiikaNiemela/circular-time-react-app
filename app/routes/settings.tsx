@@ -3,7 +3,12 @@ import { Link, redirect } from "react-router";
 import type { Route } from "./+types/settings";
 import { isProduction } from "../lib/buildConfig";
 import { DarkModeToggle } from "../components/DarkModeToggle";
-import { startGoogleCalendarConnection, startOutlookCalendarConnection } from "../lib/providerAuth";
+import {
+  startGoogleCalendarConnection,
+  startGoogleIdentityLink,
+  startOutlookCalendarConnection,
+  startOutlookIdentityLink,
+} from "../lib/providerAuth";
 import { GoogleTokenStore } from "../data/providers/google";
 import { OutlookTokenStore } from "../data/providers/outlook";
 import { CalendarVisibilityStore, CalendarCache } from "../data";
@@ -41,9 +46,19 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const { getUserId } = await import("../lib/session.server");
   const userId = await getUserId(request);
-  if (!userId && isProduction()) throw redirect("/sign-in");
-  return null;
+  if (!userId) {
+    if (isProduction()) throw redirect("/sign-in");
+    return null;
+  }
+  const { userRepository } = await import("../lib/userRepository.server");
+  return { signInProviders: await userRepository.getSignInProviders(userId) };
 }
+
+/** Providers whose accounts can be linked as application sign-in identities. */
+const IDENTITY_PROVIDERS = [
+  { id: "google", name: "Google" },
+  { id: "outlook", name: "Microsoft (Outlook)" },
+] as const;
 
 interface CalendarProvider {
   id: string;
@@ -77,8 +92,10 @@ function resolveProvidersFromStorage(): CalendarProvider[] {
   });
 }
 
-export default function Settings() {
+export default function Settings({ loaderData }: Partial<Route.ComponentProps> = {}) {
   const [providers, setProviders] = useState<CalendarProvider[]>(INITIAL_PROVIDERS);
+  // Development without a session has no application account to link to.
+  const signInProviders = loaderData?.signInProviders ?? null;
 
   // Sync from localStorage after hydration — reading storage during SSR would
   // produce a server/client mismatch because localStorage is client-only.
@@ -163,6 +180,16 @@ export default function Settings() {
     );
   }
 
+  async function linkIdentity(id: string) {
+    const url =
+      id === "google" ? await startGoogleIdentityLink() : await startOutlookIdentityLink();
+    if (!url) {
+      alert("This sign-in provider is not configured for this build.");
+      return;
+    }
+    window.location.assign(url);
+  }
+
   return (
     <div className={page}>
       <header className={topBar}>
@@ -174,6 +201,39 @@ export default function Settings() {
       </header>
 
       <main className={content}>
+        {signInProviders && (
+          <>
+            <h2 className={sectionTitle}>Sign-in accounts</h2>
+            <ul className={calendarList} aria-label="Sign-in accounts">
+              {IDENTITY_PROVIDERS.map((provider) => {
+                const linked = signInProviders.includes(provider.id);
+                return (
+                  <li key={provider.id} className={calendarItem}>
+                    <div className={calendarInfo}>
+                      <p className={calendarName}>{provider.name}</p>
+                      <p className={calendarStatus}>
+                        {linked ? "Can sign in to this account" : "Not linked"}
+                      </p>
+                    </div>
+                    {!linked && (
+                      <div className={calendarActions}>
+                        <button
+                          type="button"
+                          className={connectButton}
+                          onClick={() => linkIdentity(provider.id)}
+                          aria-label={`Link ${provider.name} account`}
+                        >
+                          Link
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
         <h2 className={sectionTitle}>Calendars</h2>
         <ul className={calendarList} aria-label="Calendar providers">
           {providers.map((provider) => (

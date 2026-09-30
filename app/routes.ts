@@ -10,5 +10,6 @@ export default [
   route("auth/session", "routes/auth.session.ts"),
   route("auth/calendar-connection", "routes/auth.calendar-connection.ts"),
   route("auth/calendar-disconnection", "routes/auth.calendar-disconnection.ts"),
+  route("auth/identity-link", "routes/auth.identity-link.ts"),
   route("auth/sign-out", "routes/auth.sign-out.ts"),
 ] satisfies RouteConfig;

@@ -27,6 +27,33 @@ describe("OAuth flow state", () => {
     expect(sessionStorage.getItem(FLOW_KEY)).toBeNull();
   });
 
+  it("accepts a link-identity flow", () => {
+    const flow = {
+      intent: "link-identity" as const,
+      returnTo: "/settings",
+      provider: "outlook" as const,
+      oauthState: "outlook-pkce-state",
+    };
+
+    setPostAuthRedirect(flow);
+
+    expect(consumePostAuthRedirect()).toEqual(flow);
+  });
+
+  it("rejects an unknown OAuth intent", () => {
+    sessionStorage.setItem(
+      FLOW_KEY,
+      JSON.stringify({
+        intent: "merge-accounts",
+        returnTo: "/",
+        provider: "google",
+        oauthState: "google-pkce-state",
+      })
+    );
+
+    expect(consumePostAuthRedirect()).toBeNull();
+  });
+
   it("returns null when no OAuth flow is pending", () => {
     expect(consumePostAuthRedirect()).toBeNull();
   });

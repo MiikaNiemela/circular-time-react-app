@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from "react-router";
 import { completeGoogleAuth, GoogleTokenStore } from "../data/providers/google";
 import { GOOGLE_CLIENT_ID, googleRedirectUri } from "../data/providers/google/config";
 import { consumePostAuthRedirect } from "../lib/authState";
+import { OAUTH_ENDPOINTS, responseError } from "../lib/oauthCompletion";
 
 export function meta() {
-  return [{ title: "Connecting Google Calendar…" }];
+  return [{ title: "Completing Google authorization…" }];
 }
 
 /**
@@ -58,7 +59,7 @@ export default function GoogleCallback() {
       persistTokens: false,
     })
       .then(async (tokens) => {
-        const endpoint = flow.intent === "sign-in" ? "/auth/session" : "/auth/calendar-connection";
+        const endpoint = OAUTH_ENDPOINTS[flow.intent];
         const body =
           flow.intent === "sign-in"
             ? { intent: flow.intent, provider: "google", accessToken: tokens.accessToken }
@@ -69,7 +70,7 @@ export default function GoogleCallback() {
           body: JSON.stringify(body),
         });
         if (!response.ok) {
-          throw new Error("Unable to establish the application session.");
+          throw new Error(await responseError(response, flow.intent));
         }
         if (flow.intent === "connect-calendar") {
           const result: unknown = await response.json();
@@ -91,12 +92,12 @@ export default function GoogleCallback() {
     <main style={{ padding: "2rem", textAlign: "center" }}>
       {error ? (
         <>
-          <p>Could not connect Google Calendar.</p>
+          <p>Google authorization did not complete.</p>
           <p>{error}</p>
           <a href="/settings">Back to settings</a>
         </>
       ) : (
-        <p>Connecting Google Calendar…</p>
+        <p>Completing Google authorization…</p>
       )}
     </main>
   );

@@ -147,24 +147,74 @@ describe("PrismaUserRepository", () => {
         },
         select: { userId: true },
       });
+      expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: "Serializable",
+      });
     });
 
-    it("reports a conflict when the provider identity belongs to another user", async () => {
+    it("is idempotent when the identity is already linked to the same user", async () => {
+      providerAccountFindUnique.mockResolvedValue({ userId: "user-uuid" });
+
+      await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
+        "linked"
+      );
+      expect(providerAccountCreate).not.toHaveBeenCalled();
+    });
+
+    it("reports a conflict and never merges when the identity belongs to another user", async () => {
       providerAccountFindUnique.mockResolvedValue({ userId: "other-user-uuid" });
 
       await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
         "conflict"
       );
+      expect(providerAccountCreate).not.toHaveBeenCalled();
     });
 
-    it("does not turn a calendar-only identity into an application sign-in identity", async () => {
+    it("reports a conflict when another user has the identity as a calendar connection", async () => {
       providerAccountFindUnique.mockResolvedValue(null);
-      calendarConnectionFindUnique.mockResolvedValue({ id: "connection-uuid" });
+      calendarConnectionFindUnique.mockResolvedValue({ userId: "other-user-uuid" });
 
       await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
         "conflict"
       );
       expect(providerAccountCreate).not.toHaveBeenCalled();
+    });
+
+    it("links an identity the same user already connected as a calendar", async () => {
+      providerAccountFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      calendarConnectionFindUnique.mockResolvedValue({ userId: "user-uuid" });
+      providerAccountCreate.mockResolvedValue({ userId: "user-uuid" });
+
+      await expect(
+        repo.linkProviderAccount("user-uuid", "outlook", "outlook-id-abc")
+      ).resolves.toBe("linked");
+      expect(providerAccountCreate).toHaveBeenCalledOnce();
+    });
+
+    it("rejects a second identity from a provider the account already links", async () => {
+      providerAccountFindUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "existing-google-identity" });
+      calendarConnectionFindUnique.mockResolvedValue(null);
+
+      await expect(
+        repo.linkProviderAccount("user-uuid", "google", "second-google-sub")
+      ).resolves.toBe("provider-already-linked");
+      expect(providerAccountFindUnique).toHaveBeenLastCalledWith({
+        where: { userId_provider: { userId: "user-uuid", provider: "google" } },
+        select: { id: true },
+      });
+      expect(providerAccountCreate).not.toHaveBeenCalled();
+    });
+
+    it("reports a conflict when a concurrent link wins the unique constraint", async () => {
+      providerAccountFindUnique.mockResolvedValue(null);
+      calendarConnectionFindUnique.mockResolvedValue(null);
+      providerAccountCreate.mockRejectedValue({ code: "P2002" });
+
+      await expect(repo.linkProviderAccount("user-uuid", "google", "google-sub-123")).resolves.toBe(
+        "conflict"
+      );
     });
   });
 
@@ -276,6 +326,19 @@ describe("PrismaUserRepository", () => {
       expect(calendarConnectionFindMany).toHaveBeenCalledWith({
         where: { userId: "user-uuid" },
         select: { id: true, provider: true, providerUserId: true },
+      });
+    });
+  });
+
+  describe("getSignInProviders", () => {
+    it("lists the providers whose identities sign in to the account, oldest first", async () => {
+      findMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);
+
+      await expect(repo.getSignInProviders("user-uuid")).resolves.toEqual(["google", "outlook"]);
+      expect(findMany).toHaveBeenCalledWith({
+        where: { userId: "user-uuid" },
+        select: { provider: true },
+        orderBy: { createdAt: "asc" },
       });
     });
   });

@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   startGoogleCalendarConnection,
+  startGoogleIdentityLink,
   startGoogleSignIn,
   startOutlookCalendarConnection,
+  startOutlookIdentityLink,
   startOutlookSignIn,
 } from "./providerAuth";
 
@@ -130,6 +132,46 @@ describe("startOutlookSignIn", () => {
     expect(mocks.startOutlookAuth).toHaveBeenCalledWith(
       expect.objectContaining({ scope: "openid profile email User.Read" })
     );
+  });
+});
+
+describe("identity-link flows", () => {
+  it("records a Google link-identity intent with identity-only scopes", async () => {
+    await expect(startGoogleIdentityLink()).resolves.toBe(
+      "https://accounts.google.com/oauth?state=google-pkce-state"
+    );
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "link-identity",
+      returnTo: "/settings",
+      provider: "google",
+      oauthState: "google-pkce-state",
+    });
+    expect(mocks.startGoogleAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "openid email profile" })
+    );
+  });
+
+  it("records an Outlook link-identity intent with identity-only scopes", async () => {
+    await startOutlookIdentityLink();
+
+    expect(mocks.setPostAuthRedirect).toHaveBeenCalledWith({
+      intent: "link-identity",
+      returnTo: "/settings",
+      provider: "outlook",
+      oauthState: "outlook-pkce-state",
+    });
+    const [{ scope }] = mocks.startOutlookAuth.mock.calls[0] as [{ scope: string }];
+    expect(scope).not.toMatch(/calendars/i);
+  });
+
+  it("returns null without recording state when the provider is not configured", async () => {
+    mocks.isGoogleConfigured.mockReturnValue(false);
+    mocks.isOutlookConfigured.mockReturnValue(false);
+
+    await expect(startGoogleIdentityLink()).resolves.toBeNull();
+    await expect(startOutlookIdentityLink()).resolves.toBeNull();
+    expect(mocks.setPostAuthRedirect).not.toHaveBeenCalled();
   });
 });
 
