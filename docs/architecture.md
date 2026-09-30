@@ -7,7 +7,7 @@ The design carries over the three-layer separation from the original app's [arch
 ## Core principles
 
 - **Server-authoritative cache.** The timeline renders from a per-user event cache on the server, read through a route loader. The browser only calls provider APIs to warm a cold cache, then hands the result back to the server. Past data is never discarded automatically.
-- **Identity before persistence.** A signed session maps each request to a stable user ID, so server-side data is keyed per user rather than per device.
+- **Identity before persistence.** A server-side session maps each request to a stable user ID, so server-side data is keyed per user rather than per device.
 - **Clear layer boundaries.** UI components never talk to calendar APIs directly; they go through a data layer.
 - **Component isolation.** Every UI component is buildable and testable in Storybook with no app context.
 - **Extraction-ready core.** The circular timeline is designed so it can be lifted into a standalone library with minimal change (see [issue #2](https://github.com/MiikaNiemela/circular-time-app/issues/2)).
@@ -30,7 +30,7 @@ The three layers and their boundaries are unchanged; the server-side work added 
 
 **UI layer.** React Router routes (sign-in, timeline, settings, OAuth callbacks) and presentational components. The centrepiece is the circular timeline component, which is purely presentational: given slices, it draws them. It holds no knowledge of calendars. The timeline route reads its events from a server `loader` rather than fetching on render.
 
-**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity: a signed, HTTP-only session cookie maps each request to a stable user ID, anchoring server-side data to a user rather than a device.
+**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity: a signed, HTTP-only cookie carries an opaque session token that the server resolves to a stable user ID on each request, anchoring server-side data to a user rather than a device. Sessions are stored server-side, so signing out revokes them.
 
 **Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus two repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range) and the user store (application sign-in identities, of which an account may link one per provider, and separate calendar connections). Each cached range is linked to an active calendar connection, so the database removes linked ranges when that connection is deleted. The server cache is the source of truth the UI reads from; the browser-side provider fetch exists only to populate it.
 

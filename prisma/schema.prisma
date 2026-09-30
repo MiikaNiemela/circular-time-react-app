@@ -17,6 +17,21 @@ model User {
   accounts            ProviderAccount[]
   calendarConnections CalendarConnection[]
   cachedEventRanges   CachedEventRange[]
+  sessions            Session[]
+}
+
+// Server-side application sessions. The cookie carries an opaque random token;
+// only its SHA-256 hash is stored, so a database copy cannot be replayed as a
+// cookie. Deleting a row revokes that session immediately.
+model Session {
+  id        String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // Provider identities used to create application sessions.

@@ -4,9 +4,11 @@ const mocks = vi.hoisted(() => ({
   fetchGoogleUserId: vi.fn(),
   fetchOutlookUserId: vi.fn(),
   signInWithProvider: vi.fn(),
-  mockSession: { get: vi.fn(), set: vi.fn(), flash: vi.fn(), unset: vi.fn() },
+  mockSession: { id: "", get: vi.fn(), set: vi.fn(), flash: vi.fn(), unset: vi.fn() },
+  previousSession: { id: "", get: vi.fn(), set: vi.fn(), flash: vi.fn(), unset: vi.fn() },
   getSession: vi.fn(),
   commitSession: vi.fn(),
+  destroySession: vi.fn(),
 }));
 
 vi.mock("../lib/userInfo.server", () => ({
@@ -20,12 +22,10 @@ vi.mock("../lib/userRepository.server", () => ({
   },
 }));
 
-vi.mock("react-router", () => ({
-  createCookieSessionStorage: vi.fn(() => ({
-    getSession: mocks.getSession,
-    commitSession: mocks.commitSession,
-    destroySession: vi.fn(),
-  })),
+vi.mock("../lib/session.server", () => ({
+  getSession: mocks.getSession,
+  commitSession: mocks.commitSession,
+  destroySession: mocks.destroySession,
 }));
 
 import { action } from "./auth.session";
@@ -40,7 +40,11 @@ function makeRequest(body: unknown): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getSession.mockResolvedValue(mocks.mockSession);
+  mocks.previousSession.id = "";
+  // The first lookup reads the request's cookie; the second creates a fresh session.
+  mocks.getSession.mockImplementation(async (cookie: string | null) =>
+    cookie === null ? mocks.mockSession : mocks.previousSession
+  );
   mocks.mockSession.get.mockReturnValue(undefined);
   mocks.commitSession.mockResolvedValue("__session=signed; HttpOnly");
   mocks.fetchGoogleUserId.mockResolvedValue("google-sub-123");
@@ -176,5 +180,34 @@ describe("POST /auth/session", () => {
     expect(res.headers.get("Set-Cookie")).toContain("__session=signed");
     expect(mocks.signInWithProvider).toHaveBeenCalledWith("outlook", "outlook-id-abc");
     expect(mocks.mockSession.set).toHaveBeenCalledWith("userId", "stable-user-uuid");
+  });
+
+  it("revokes an existing session and issues a new one instead of reusing it", async () => {
+    mocks.previousSession.id = "earlier-session-token";
+    const request = new Request("http://localhost/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: "__session=earlier" },
+      body: JSON.stringify({ intent: "sign-in", provider: "google", accessToken: "tok" }),
+    });
+
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const res = await action({ request, params: {}, context: {} });
+
+    expect(res.status).toBe(200);
+    expect(mocks.destroySession).toHaveBeenCalledWith(mocks.previousSession);
+    expect(mocks.getSession).toHaveBeenLastCalledWith(null);
+    expect(mocks.mockSession.set).toHaveBeenCalledWith("userId", "stable-user-uuid");
+    expect(mocks.previousSession.set).not.toHaveBeenCalled();
+  });
+
+  it("does not revoke anything when the request has no session", async () => {
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    await action({
+      request: makeRequest({ intent: "sign-in", provider: "google", accessToken: "tok" }),
+      params: {},
+      context: {},
+    });
+
+    expect(mocks.destroySession).not.toHaveBeenCalled();
   });
 });
