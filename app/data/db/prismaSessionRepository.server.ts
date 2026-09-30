@@ -13,13 +13,21 @@ export function hashSessionToken(token: string): string {
 export class PrismaSessionRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  /** Stores only the hash of a new 256-bit random token and returns the token. */
-  async create(userId: string, expiresAt: Date): Promise<string> {
+  /**
+   * Stores only the hash of a new 256-bit random token and returns the token.
+   * Each sign-in also removes every expired session. Expired cookies stop
+   * being sent, so without this, abandoned rows would accumulate; the
+   * `expiresAt` index keeps the delete cheap.
+   */
+  async create(userId: string, expiresAt: Date, now: Date = new Date()): Promise<string> {
     const token = randomBytes(32).toString("base64url");
-    await this.db.session.create({
-      data: { id: hashSessionToken(token), userId, expiresAt },
-      select: { id: true },
-    });
+    await this.db.$transaction([
+      this.db.session.deleteMany({ where: { expiresAt: { lte: now } } }),
+      this.db.session.create({
+        data: { id: hashSessionToken(token), userId, expiresAt },
+        select: { id: true },
+      }),
+    ]);
     return token;
   }
 

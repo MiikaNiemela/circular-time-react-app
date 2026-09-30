@@ -13,14 +13,17 @@ describe("PrismaSessionRepository", () => {
     create = vi.fn().mockResolvedValue({ id: "hash" });
     findUnique = vi.fn();
     deleteMany = vi.fn().mockResolvedValue({ count: 1 });
-    const db = { session: { create, findUnique, deleteMany } } as unknown as PrismaClient;
+    const db = {
+      session: { create, findUnique, deleteMany },
+      $transaction: vi.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
+    } as unknown as PrismaClient;
     repo = new PrismaSessionRepository(db);
   });
 
   it("creates a 256-bit random token and stores only its hash", async () => {
     const expiresAt = new Date("2026-10-31T00:00:00Z");
 
-    const token = await repo.create("user-uuid", expiresAt);
+    const token = await repo.create("user-uuid", expiresAt, now);
 
     expect(Buffer.from(token, "base64url")).toHaveLength(32);
     expect(create).toHaveBeenCalledWith({
@@ -28,6 +31,12 @@ describe("PrismaSessionRepository", () => {
       select: { id: true },
     });
     expect(JSON.stringify(create.mock.calls)).not.toContain(token);
+  });
+
+  it("removes every expired session when a new session is created", async () => {
+    await repo.create("user-uuid", new Date("2026-10-31T00:00:00Z"), now);
+
+    expect(deleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lte: now } } });
   });
 
   it("issues a different token for every session", async () => {

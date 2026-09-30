@@ -4,8 +4,11 @@
  * store a one-way hash of it, never the token itself.
  */
 export interface SessionRepository {
-  /** Creates a session for the user and returns its new opaque token. */
-  create(userId: string, expiresAt: Date): Promise<string>;
+  /**
+   * Creates a session for the user and returns its new opaque token.
+   * Implementations also remove sessions that expired at or before `now`.
+   */
+  create(userId: string, expiresAt: Date, now: Date): Promise<string>;
   /** Returns the session's user when the token is known and not expired. */
   findUserId(token: string, now: Date): Promise<string | null>;
   /** Revokes the session. Unknown tokens are ignored. User data is unaffected. */

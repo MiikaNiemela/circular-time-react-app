@@ -23,6 +23,11 @@ if (process.env.NODE_ENV === "production" && !sessionSecret) {
   throw new Error("SESSION_SECRET must be set in production");
 }
 
+/** True for a well-formed opaque session token as issued by the repository. */
+function isSessionToken(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 /**
  * Builds session storage over a repository. Sessions are immutable: a sign-in
  * always creates a new session, which also prevents session fixation.
@@ -48,12 +53,17 @@ export function createApplicationSessionStorage(
       if (!data.userId) throw new Error("A session requires a userId");
       // The server-side record is the authority on lifetime; the cookie's own
       // expiry only tells the browser when to stop sending it.
+      const issuedAt = now();
       return repository.create(
         data.userId,
-        new Date(now().getTime() + SESSION_MAX_AGE_SECONDS * 1000)
+        new Date(issuedAt.getTime() + SESSION_MAX_AGE_SECONDS * 1000),
+        issuedAt
       );
     },
     async readData(token) {
+      // A cookie signed with the same secret but written by an earlier
+      // session format parses to a non-string value; treat it as signed out.
+      if (!isSessionToken(token)) return null;
       const userId = await repository.findUserId(token, now());
       return userId ? { userId } : null;
     },
@@ -61,7 +71,7 @@ export function createApplicationSessionStorage(
       throw new Error("Application sessions are immutable; create a new session instead");
     },
     async deleteData(token) {
-      if (token) await repository.revoke(token);
+      if (isSessionToken(token)) await repository.revoke(token);
     },
   });
 }

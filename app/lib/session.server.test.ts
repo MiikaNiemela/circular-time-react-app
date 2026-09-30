@@ -4,6 +4,7 @@ import type { SessionRepository } from "./sessionRepository";
 // The Prisma-backed default storage is never constructed in these tests.
 vi.mock("../data/db/prismaClient.server", () => ({ prisma: {} }));
 
+import { createCookieSessionStorage } from "react-router";
 import { createApplicationSessionStorage, SESSION_MAX_AGE_SECONDS } from "./session.server";
 
 /** In-memory SessionRepository with the same contract as the Prisma driver. */
@@ -11,7 +12,8 @@ class MemorySessionRepository implements SessionRepository {
   readonly rows = new Map<string, { userId: string; expiresAt: Date }>();
   private next = 0;
 
-  async create(userId: string, expiresAt: Date): Promise<string> {
+  async create(userId: string, expiresAt: Date, now: Date): Promise<string> {
+    for (const [token, row] of this.rows) if (row.expiresAt <= now) this.rows.delete(token);
     const token = `token-${++this.next}`;
     this.rows.set(token, { userId, expiresAt });
     return token;
@@ -105,6 +107,15 @@ describe("server-side application sessions", () => {
     expect(repository.rows.size).toBe(0);
   });
 
+  it("passes the issue time so the store can prune sessions that have expired", async () => {
+    await signIn("user-1");
+    clock = new Date(clock.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
+
+    await signIn("user-2");
+
+    expect([...repository.rows.values()].map((row) => row.userId)).toEqual(["user-2"]);
+  });
+
   it("rejects a cookie that was not signed with the session secret", async () => {
     const cookie = await signIn("user-1");
     const forged = createApplicationSessionStorage(repository, "other-secret", () => clock);
@@ -117,6 +128,37 @@ describe("server-side application sessions", () => {
     session.set("userId", "user-2");
 
     await expect(storage.commitSession(session)).rejects.toThrow(/immutable/);
+  });
+});
+
+describe("cookies from the earlier session format", () => {
+  /** A cookie written by the previous cookie-only storage with the same secret. */
+  async function legacyCookie(): Promise<string> {
+    const legacy = createCookieSessionStorage({
+      cookie: { name: "__session", secrets: [SECRET], httpOnly: true, sameSite: "lax", path: "/" },
+    });
+    const session = await legacy.getSession(null);
+    session.set("userId", "user-a");
+    return (await legacy.commitSession(session)).split(";")[0];
+  }
+
+  it("treats a legacy cookie as signed out without querying the store", async () => {
+    const findUserId = vi.spyOn(repository, "findUserId");
+
+    const session = await storage.getSession(await legacyCookie());
+
+    expect(session.get("userId")).toBeUndefined();
+    expect(findUserId).not.toHaveBeenCalled();
+  });
+
+  it("signs out a legacy cookie without error", async () => {
+    const revoke = vi.spyOn(repository, "revoke");
+    const session = await storage.getSession(await legacyCookie());
+
+    await expect(storage.destroySession(session)).resolves.toContain(
+      "Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    );
+    expect(revoke).not.toHaveBeenCalled();
   });
 });
 
