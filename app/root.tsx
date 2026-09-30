@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { removeLegacyBrowserCalendarData } from "./lib/legacyBrowserData";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +23,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => removeLegacyBrowserCalendarData(), []);
   return (
     <ThemeProvider>
       <Outlet />

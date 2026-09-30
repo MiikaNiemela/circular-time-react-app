@@ -1,19 +1,9 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { useState, useEffect, type ReactNode } from "react";
+import { Link, redirect } from "react-router";
+import type { Route } from "./+types/settings";
+import { isProduction } from "../lib/buildConfig";
 import { DarkModeToggle } from "../components/DarkModeToggle";
-import { startGoogleAuth, GoogleTokenStore } from "../data/providers/google";
-import {
-  GOOGLE_CLIENT_ID,
-  googleRedirectUri,
-  isGoogleConfigured,
-} from "../data/providers/google/config";
-import { startOutlookAuth, OutlookTokenStore } from "../data/providers/outlook";
-import {
-  OUTLOOK_CLIENT_ID,
-  outlookRedirectUri,
-  isOutlookConfigured,
-} from "../data/providers/outlook/config";
-import { CalendarVisibilityStore, CalendarCache } from "../data";
+import { CalendarVisibilityStore } from "../data";
 import {
   page,
   topBar,
@@ -39,6 +29,33 @@ export function meta() {
   return [{ title: "Settings — Circular Time" }];
 }
 
+/**
+ * Settings manages the signed-in account's calendar connections, so it is
+ * only served to an application session. Unauthenticated production requests
+ * are redirected to sign-in before any settings markup is rendered, matching
+ * the timeline route.
+ */
+export async function loader({ request }: Route.LoaderArgs) {
+  const { getUserId } = await import("../lib/session.server");
+  const userId = await getUserId(request);
+  if (!userId) {
+    if (isProduction()) throw redirect("/sign-in");
+    return null;
+  }
+  const { userRepository } = await import("../lib/userRepository.server");
+  const [signInProviders, connectedProviders] = await Promise.all([
+    userRepository.getSignInProviders(userId),
+    userRepository.getConnectedProviders(userId),
+  ]);
+  return { signInProviders, connectedProviders };
+}
+
+/** Providers whose accounts can be linked as application sign-in identities. */
+const IDENTITY_PROVIDERS = [
+  { id: "google", name: "Google" },
+  { id: "outlook", name: "Microsoft (Outlook)" },
+] as const;
+
 interface CalendarProvider {
   id: string;
   name: string;
@@ -53,36 +70,60 @@ const INITIAL_PROVIDERS: CalendarProvider[] = [
   { id: "ical", name: "iCal / CalDAV", icon: "🗓", connected: false, enabled: false },
 ];
 
-function resolveProvidersFromStorage(): CalendarProvider[] {
-  const visibility = new CalendarVisibilityStore();
-  return INITIAL_PROVIDERS.map((p) => {
-    const connected =
-      (p.id === "google" && new GoogleTokenStore().get() != null) ||
-      (p.id === "outlook" && new OutlookTokenStore().get() != null);
-    if (!connected) {
-      console.debug(`No connected provider found for ${p.id}; marking as disconnected.`);
-      return p;
-    }
-    // A connected calendar's toggle reflects its persisted visibility.
-    console.debug(
-      `Connected provider found for ${p.id}; visibility is ${visibility.isVisible(p.id)}`
-    );
-    return { ...p, connected: true, enabled: visibility.isVisible(p.id) };
-  });
+/**
+ * Server-side connection state. Without a visibility store every connected
+ * calendar is shown, which is also what the server renders; the browser's
+ * stored visibility is merged in after hydration.
+ */
+function resolveProviders(
+  connectedProviders: readonly string[],
+  visibility?: CalendarVisibilityStore
+): CalendarProvider[] {
+  return INITIAL_PROVIDERS.map((p) =>
+    connectedProviders.includes(p.id)
+      ? { ...p, connected: true, enabled: visibility?.isVisible(p.id) ?? true }
+      : p
+  );
 }
 
-export default function Settings() {
-  const [providers, setProviders] = useState<CalendarProvider[]>(INITIAL_PROVIDERS);
+/** Starts a server-side OAuth flow: the server redirects to the provider. */
+function OAuthStartForm({
+  provider,
+  intent,
+  label,
+  children,
+  onSubmit,
+}: {
+  provider: "google" | "outlook";
+  intent: "link-identity" | "connect-calendar";
+  label: string;
+  children: ReactNode;
+  onSubmit?: () => void;
+}) {
+  return (
+    <form method="post" action={`/auth/${provider}/start`} onSubmit={onSubmit}>
+      <input type="hidden" name="intent" value={intent} />
+      <button type="submit" className={connectButton} aria-label={label}>
+        {children}
+      </button>
+    </form>
+  );
+}
 
-  // Sync from localStorage after hydration — reading storage during SSR would
-  // produce a server/client mismatch because localStorage is client-only.
-  // Unlike the timeline's reference date (see lib/persistentState), providers
-  // carry optimistic, non-persisted edits from the handlers below, so they are
-  // not a pure external store; a one-shot post-hydration seed is correct here.
+export default function Settings({ loaderData }: Partial<Route.ComponentProps> = {}) {
+  // Development without a session has no application account to link to.
+  const signInProviders = loaderData?.signInProviders ?? null;
+  const connectedProviders = loaderData?.connectedProviders;
+  const [providers, setProviders] = useState<CalendarProvider[]>(() =>
+    resolveProviders(connectedProviders ?? [])
+  );
+
+  // Connection state comes from the server; visibility is a browser preference,
+  // so it is applied after hydration to keep the server and client renders equal.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe one-shot localStorage seed; see note above
-    setProviders(resolveProvidersFromStorage());
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe localStorage merge after hydration
+    setProviders(resolveProviders(connectedProviders ?? [], new CalendarVisibilityStore()));
+  }, [connectedProviders]);
 
   function toggleEnabled(id: string) {
     setProviders((ps) =>
@@ -95,64 +136,24 @@ export default function Settings() {
     );
   }
 
-  async function connect(id: string) {
-    // A freshly-connected calendar starts visible, even if it was hidden before
-    // a previous disconnect.
-    new CalendarVisibilityStore().setVisible(id, true);
-    if (id === "google") {
-      console.debug("calendar visibility change - starting Google OAuth flow...");
-      if (!isGoogleConfigured()) {
-        alert("Google Calendar is not configured for this build.");
-        return;
-      }
-      // Redirect into Google's consent screen; the callback finishes the flow.
-      const url = await startGoogleAuth({
-        clientId: GOOGLE_CLIENT_ID,
-        redirectUri: googleRedirectUri(window.location.origin),
-      });
-      console.debug("redirecting to Google OAuth consent screen...");
-      window.location.assign(url);
-      return;
-    }
-    if (id === "outlook") {
-      console.debug("calendar visibility change - starting Outlook OAuth flow...");
-      if (!isOutlookConfigured()) {
-        alert("Outlook Calendar is not configured for this build.");
-        return;
-      }
-      const url = await startOutlookAuth({
-        clientId: OUTLOOK_CLIENT_ID,
-        redirectUri: outlookRedirectUri(window.location.origin),
-      });
-      console.debug("redirecting to Outlook OAuth consent screen...");
-      window.location.assign(url);
-      return;
-    }
-    // iCal auth lands in Milestone 3.5.
-    if (id === "ical") {
-      alert("iCal visibility toggled - no implementation yet.");
-      return;
-    }
-    setProviders((ps) =>
-      ps.map((p) => (p.id === id ? { ...p, connected: true, enabled: true } : p))
-    );
-  }
+  async function disconnect(id: string) {
+    if (id !== "google" && id !== "outlook") return;
 
-  function disconnect(id: string) {
-    if (id === "google") {
-      console.debug("disconnecting Google Calendar...");
-      new GoogleTokenStore().clear();
+    try {
+      const response = await fetch("/auth/calendar-disconnection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to remove calendar connection");
+      }
+    } catch {
+      alert("Unable to disconnect the calendar. Try again.");
+      return;
     }
-    if (id === "outlook") {
-      console.debug("disconnecting Outlook Calendar...");
-      new OutlookTokenStore().clear();
-    }
-    if (id === "ical") {
-      console.debug("disconnecting iCal Calendar (no-op)...");
-      // No storage to clear for iCal since there's no implementation yet.
-    }
-    // Drop cached events so a disconnected calendar leaves nothing behind.
-    new CalendarCache().remove(id);
+
+    // The server removed the connection, its stored credentials, and its cached events.
     setProviders((ps) =>
       ps.map((p) => (p.id === id ? { ...p, connected: false, enabled: false } : p))
     );
@@ -169,6 +170,38 @@ export default function Settings() {
       </header>
 
       <main className={content}>
+        {signInProviders && (
+          <>
+            <h2 className={sectionTitle}>Sign-in accounts</h2>
+            <ul className={calendarList} aria-label="Sign-in accounts">
+              {IDENTITY_PROVIDERS.map((provider) => {
+                const linked = signInProviders.includes(provider.id);
+                return (
+                  <li key={provider.id} className={calendarItem}>
+                    <div className={calendarInfo}>
+                      <p className={calendarName}>{provider.name}</p>
+                      <p className={calendarStatus}>
+                        {linked ? "Can sign in to this account" : "Not linked"}
+                      </p>
+                    </div>
+                    {!linked && (
+                      <div className={calendarActions}>
+                        <OAuthStartForm
+                          provider={provider.id}
+                          intent="link-identity"
+                          label={`Link ${provider.name} account`}
+                        >
+                          Link
+                        </OAuthStartForm>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
         <h2 className={sectionTitle}>Calendars</h2>
         <ul className={calendarList} aria-label="Calendar providers">
           {providers.map((provider) => (
@@ -203,11 +236,23 @@ export default function Settings() {
                       Disconnect
                     </button>
                   </>
+                ) : provider.id === "google" || provider.id === "outlook" ? (
+                  <OAuthStartForm
+                    provider={provider.id}
+                    intent="connect-calendar"
+                    label={`Connect ${provider.name}`}
+                    // A freshly-connected calendar starts visible, even if it
+                    // was hidden before a previous disconnect.
+                    onSubmit={() => new CalendarVisibilityStore().setVisible(provider.id, true)}
+                  >
+                    Connect
+                  </OAuthStartForm>
                 ) : (
                   <button
                     type="button"
                     className={connectButton}
-                    onClick={() => connect(provider.id)}
+                    // iCal lands in Milestone 3.5.
+                    onClick={() => alert("iCal visibility toggled - no implementation yet.")}
                   >
                     Connect
                   </button>
@@ -216,6 +261,17 @@ export default function Settings() {
             </li>
           ))}
         </ul>
+
+        {signInProviders && (
+          <>
+            <h2 className={sectionTitle}>Account</h2>
+            <form method="post" action="/auth/sign-out">
+              <button type="submit" className={disconnectButton}>
+                Sign out
+              </button>
+            </form>
+          </>
+        )}
       </main>
     </div>
   );

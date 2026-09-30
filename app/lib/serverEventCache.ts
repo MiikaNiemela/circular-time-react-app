@@ -12,6 +12,6 @@ import type { CacheEntry } from "../data/cache";
 export interface ServerEventCache {
   /** Returns the cached entry for a user + calendar + range, or `null` on miss. */
   get(userId: string, calendarId: string, range: TimeRange): Promise<CacheEntry | null>;
-  /** Stores or replaces the cached entry for a user + calendar + range. */
-  set(userId: string, entry: CacheEntry): Promise<void>;
+  /** Stores or replaces a range bound to the exact authorized calendar connection. */
+  set(userId: string, calendarConnectionId: string, entry: CacheEntry): Promise<void>;
 }
