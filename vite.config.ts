@@ -21,6 +21,8 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
+          isolate: false,
+          maxWorkers: 6,
           environment: "jsdom",
           globals: true,
           include: ["app/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
@@ -38,6 +40,8 @@ export default defineConfig({
         ],
         test: {
           name: "storybook",
+          isolate: false,
+          maxWorkers: 6,
           browser: {
             enabled: true,
             headless: true,
