@@ -21,7 +21,6 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          isolate: false,
           maxWorkers: 6,
           environment: "jsdom",
           globals: true,
