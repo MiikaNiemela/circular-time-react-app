@@ -18,8 +18,7 @@ export type CalendarConnectionResult = "connected" | "conflict";
 
 /** Reports whether a sign-in identity established a session or is calendar-only. */
 export type ProviderSignInResult =
-  | { kind: "signed-in"; userId: string }
-  | { kind: "calendar-only" };
+  { kind: "signed-in"; userId: string } | { kind: "calendar-only" };
 
 /** An active calendar identity authorized for a specific application account. */
 export interface CalendarConnection {
