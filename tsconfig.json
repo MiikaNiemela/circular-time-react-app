@@ -6,6 +6,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "skipLibCheck": true,
     "jsx": "react-jsx",
     "strict": true,
     "rootDirs": [".", ".react-router/types"],
