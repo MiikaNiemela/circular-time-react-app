@@ -173,6 +173,17 @@ export class PrismaUserRepository {
     });
   }
 
+  /** Lists every calendar connection, across accounts, that has stored credentials. */
+  async listRefreshableCalendarConnections(): Promise<
+    Array<{ id: string; userId: string; provider: string; providerUserId: string }>
+  > {
+    return this.db.calendarConnection.findMany({
+      where: { credential: { isNot: null } },
+      select: { id: true, userId: true, provider: true, providerUserId: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
   /** Lists the providers whose identities can sign in to the application account. */
   async getSignInProviders(userId: string): Promise<string[]> {
     const accounts = await this.db.providerAccount.findMany({

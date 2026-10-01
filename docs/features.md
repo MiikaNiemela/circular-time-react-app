@@ -30,7 +30,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Outlook Calendar integration | ✅ | planned | Microsoft Graph; server-side OAuth 2.0 authorization-code flow with PKCE as a confidential web client (secret in GCP Secret Manager); `OutlookCalendarProvider`. |
 | Local calendar access | ⏸ | planned (re-scoped) | `.ics`/CalDAV import. Deferred — no test service available (Milestone 3.5). |
 | Per-calendar visibility filtering | ✅ | planned | `CalendarVisibilityStore` persists show/hide; settings toggles write through; timeline respects. |
-| Refresh policy | ✅ | planned | Past = manual refresh only; near-future (≤1 day) = auto on open. Runs server-side to fetch only uncovered windows. |
+| Refresh policy | ✅ | planned | Past = manual refresh only; near-future (≤1 day) = auto on open once the cached copy is 15 minutes old. Runs server-side on whole UTC months, which every view shares, and fetches only months that are missing or stale. |
 | Secure credential storage | ✅ | planned | Provider OAuth tokens held only on the server, encrypted with AES-256-GCM under an application key and bound to their user and calendar connection; user identity in a signed HTTP-only session cookie; OAuth client secrets in GCP Secret Manager, never in the image. |
 
 ---
@@ -47,6 +47,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Persistent user store | ✅ | **new** | User records, application sign-in provider accounts, and calendar connections in PostgreSQL via Prisma, behind a `userRepository` interface so the driver stays swappable. |
 | Server-side event cache | ✅ | **new** | Calendar events persisted in Postgres, keyed by user + provider + time range; shared across devices; past data never auto-removed. Replaces the old per-device `localStorage` cache. |
 | Server-driven data flow | ✅ | **new** | The timeline reads events from a server `loader`, which fetches stale or missing windows from the providers with the account's stored credentials, refreshing expired access tokens. The browser makes no provider API calls. |
+| Background calendar refresh | ✅ | **new** | `refreshCalendars` refreshes the near-future months of every connected calendar with stored credentials, without a signed-in user. It is trigger-independent; no scheduler invokes it yet. |
 
 ---
 

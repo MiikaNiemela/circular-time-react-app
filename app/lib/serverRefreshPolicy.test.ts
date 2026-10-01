@@ -1,60 +1,89 @@
 import { describe, it, expect } from "vitest";
-import { splitIntoMonthlyWindows, deduplicateEvents } from "./serverRefreshPolicy";
+import {
+  deduplicateEvents,
+  eventsOverlapping,
+  monthlyWindowsCovering,
+} from "./serverRefreshPolicy";
 
-describe("splitIntoMonthlyWindows", () => {
-  it("returns a single window when range fits within one month", () => {
+describe("monthlyWindowsCovering", () => {
+  it("covers a range inside one month with that whole month", () => {
     const range = { start: "2026-01-10T00:00:00.000Z", end: "2026-01-25T00:00:00.000Z" };
-    const result = splitIntoMonthlyWindows(range);
-    expect(result).toEqual([range]);
-  });
-
-  it("splits a two-month range at the UTC month boundary", () => {
-    const range = { start: "2026-01-15T00:00:00.000Z", end: "2026-03-01T00:00:00.000Z" };
-    const result = splitIntoMonthlyWindows(range);
-    expect(result).toEqual([
-      { start: "2026-01-15T00:00:00.000Z", end: "2026-02-01T00:00:00.000Z" },
-      { start: "2026-02-01T00:00:00.000Z", end: "2026-03-01T00:00:00.000Z" },
+    expect(monthlyWindowsCovering(range)).toEqual([
+      { start: "2026-01-01T00:00:00.000Z", end: "2026-02-01T00:00:00.000Z" },
     ]);
   });
 
-  it("splits a full year into 12 windows aligned to month starts", () => {
-    const range = { start: "2026-01-01T00:00:00.000Z", end: "2027-01-01T00:00:00.000Z" };
-    const result = splitIntoMonthlyWindows(range);
-    expect(result).toHaveLength(12);
-    expect(result[0]).toEqual({
-      start: "2026-01-01T00:00:00.000Z",
-      end: "2026-02-01T00:00:00.000Z",
-    });
-    expect(result[11]).toEqual({
-      start: "2026-12-01T00:00:00.000Z",
-      end: "2027-01-01T00:00:00.000Z",
-    });
+  it("gives every range inside a month the same window, so views share cache keys", () => {
+    const day = { start: "2026-10-14T00:00:00.000Z", end: "2026-10-17T00:00:00.000Z" };
+    const week = { start: "2026-10-11T00:00:00.000Z", end: "2026-10-20T00:00:00.000Z" };
+    expect(monthlyWindowsCovering(day)).toEqual(monthlyWindowsCovering(week));
   });
 
-  it("handles a range starting mid-month and ending mid-month across a year boundary", () => {
+  it("treats the range end as exclusive", () => {
+    const range = { start: "2026-01-15T00:00:00.000Z", end: "2026-02-01T00:00:00.000Z" };
+    expect(monthlyWindowsCovering(range)).toEqual([
+      { start: "2026-01-01T00:00:00.000Z", end: "2026-02-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("covers a range crossing a year boundary with each whole month", () => {
     const range = { start: "2026-11-15T00:00:00.000Z", end: "2027-02-10T00:00:00.000Z" };
-    const result = splitIntoMonthlyWindows(range);
-    expect(result).toEqual([
-      { start: "2026-11-15T00:00:00.000Z", end: "2026-12-01T00:00:00.000Z" },
+    expect(monthlyWindowsCovering(range)).toEqual([
+      { start: "2026-11-01T00:00:00.000Z", end: "2026-12-01T00:00:00.000Z" },
       { start: "2026-12-01T00:00:00.000Z", end: "2027-01-01T00:00:00.000Z" },
       { start: "2027-01-01T00:00:00.000Z", end: "2027-02-01T00:00:00.000Z" },
-      { start: "2027-02-01T00:00:00.000Z", end: "2027-02-10T00:00:00.000Z" },
+      { start: "2027-02-01T00:00:00.000Z", end: "2027-03-01T00:00:00.000Z" },
     ]);
   });
 
-  it("windows are contiguous — each end equals the next start", () => {
-    const range = { start: "2026-03-05T00:00:00.000Z", end: "2026-06-20T00:00:00.000Z" };
-    const windows = splitIntoMonthlyWindows(range);
+  it("covers a full year with 12 contiguous windows", () => {
+    const range = { start: "2026-01-01T00:00:00.000Z", end: "2027-01-01T00:00:00.000Z" };
+    const windows = monthlyWindowsCovering(range);
+    expect(windows).toHaveLength(12);
     for (let i = 0; i + 1 < windows.length; i++) {
       expect(windows[i].end).toBe(windows[i + 1].start);
     }
   });
 
-  it("first window start equals range.start and last window end equals range.end", () => {
-    const range = { start: "2026-05-10T12:30:00.000Z", end: "2026-08-20T15:45:00.000Z" };
-    const windows = splitIntoMonthlyWindows(range);
-    expect(windows[0].start).toBe(range.start);
-    expect(windows[windows.length - 1].end).toBe(range.end);
+  it("returns no windows for an empty range", () => {
+    const at = "2026-05-10T12:00:00.000Z";
+    expect(monthlyWindowsCovering({ start: at, end: at })).toEqual([]);
+  });
+});
+
+describe("eventsOverlapping", () => {
+  const RANGE = { start: "2026-10-15T00:00:00.000Z", end: "2026-10-16T00:00:00.000Z" };
+  const event = (id: string, start: string, end: string) => ({
+    id,
+    calendarId: "g",
+    title: id,
+    start,
+    end,
+  });
+
+  it("keeps events inside, crossing either edge, or spanning the range", () => {
+    const events = [
+      event("inside", "2026-10-15T09:00:00.000Z", "2026-10-15T10:00:00.000Z"),
+      event("crosses-start", "2026-10-14T23:00:00.000Z", "2026-10-15T01:00:00.000Z"),
+      event("crosses-end", "2026-10-15T23:00:00.000Z", "2026-10-16T01:00:00.000Z"),
+      event("spans", "2026-10-01T00:00:00.000Z", "2026-10-31T00:00:00.000Z"),
+    ];
+    expect(eventsOverlapping(events, RANGE)).toEqual(events);
+  });
+
+  it("drops events that only touch the range edges", () => {
+    const events = [
+      event("ends-at-start", "2026-10-14T23:00:00.000Z", "2026-10-15T00:00:00.000Z"),
+      event("starts-at-end", "2026-10-16T00:00:00.000Z", "2026-10-16T01:00:00.000Z"),
+      event("other-day", "2026-10-20T09:00:00.000Z", "2026-10-20T10:00:00.000Z"),
+    ];
+    expect(eventsOverlapping(events, RANGE)).toEqual([]);
+  });
+
+  it("keeps a zero-length event only when its instant is inside the range", () => {
+    const atStart = event("at-start", RANGE.start, RANGE.start);
+    const atEnd = event("at-end", RANGE.end, RANGE.end);
+    expect(eventsOverlapping([atStart, atEnd], RANGE)).toEqual([atStart]);
   });
 });
 

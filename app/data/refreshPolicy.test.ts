@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldRefresh } from "./refreshPolicy";
+import { NEAR_FUTURE_FRESH_FOR_MS, nearFutureRange, shouldRefresh } from "./refreshPolicy";
 import type { TimeRange } from "./types";
 
 const NOW = new Date("2026-06-19T12:00:00.000Z");
@@ -45,5 +45,26 @@ describe("shouldRefresh", () => {
   it("refreshes a far-future range when never fetched", () => {
     const r = range("2026-06-21T00:00:00.000Z", "2026-06-22T00:00:00.000Z");
     expect(shouldRefresh(r, null, NOW)).toBe(true);
+  });
+
+  it("serves a near-future range fetched within the freshness period from the cache", () => {
+    const r = range("2026-06-19T00:00:00.000Z", "2026-06-20T00:00:00.000Z");
+    const justFresh = new Date(NOW.getTime() - NEAR_FUTURE_FRESH_FOR_MS + 1).toISOString();
+    expect(shouldRefresh(r, justFresh, NOW)).toBe(false);
+  });
+
+  it("refreshes a near-future range once the freshness period has passed", () => {
+    const r = range("2026-06-19T00:00:00.000Z", "2026-06-20T00:00:00.000Z");
+    const justStale = new Date(NOW.getTime() - NEAR_FUTURE_FRESH_FOR_MS).toISOString();
+    expect(shouldRefresh(r, justStale, NOW)).toBe(true);
+  });
+});
+
+describe("nearFutureRange", () => {
+  it("spans from now to one day ahead", () => {
+    expect(nearFutureRange(NOW)).toEqual({
+      start: "2026-06-19T12:00:00.000Z",
+      end: "2026-06-20T12:00:00.000Z",
+    });
   });
 });

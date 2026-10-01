@@ -7,7 +7,11 @@ import type { CalendarEventData } from "./calendarTimeline";
 import type { CalendarConnection } from "./userRepository";
 import type { ServerEventCache } from "./serverEventCache";
 import { ServerCalendarCache } from "./serverCalendarCache";
-import { deduplicateEvents, splitIntoMonthlyWindows } from "./serverRefreshPolicy";
+import {
+  deduplicateEvents,
+  eventsOverlapping,
+  monthlyWindowsCovering,
+} from "./serverRefreshPolicy";
 
 /** The events to render for one calendar, and whether reading it failed. */
 export interface CalendarReadResult {
@@ -23,7 +27,7 @@ export interface CalendarReaderDeps {
   now?: () => Date;
 }
 
-/** Serves whatever monthly windows are cached; the range is known only when all are. */
+/** Serves whatever months are cached; the range is known only when all are. */
 async function cachedEvents(
   cache: ServerEventCache,
   userId: string,
@@ -32,23 +36,23 @@ async function cachedEvents(
 ): Promise<CalendarEventData> {
   const events: CalendarEvent[] = [];
   let allCovered = true;
-  for (const window of splitIntoMonthlyWindows(range)) {
+  for (const window of monthlyWindowsCovering(range)) {
     const entry = await cache.get(userId, calendarId, window);
     if (entry) events.push(...entry.events);
     else allCovered = false;
   }
   return {
     calendarId,
-    events: deduplicateEvents(events),
+    events: eventsOverlapping(deduplicateEvents(events), range),
     fetchedRange: allCovered ? range : null,
   };
 }
 
 /**
- * Returns fresh events for the connection, fetching stale or missing monthly
- * windows from the provider. When the provider or its credentials fail, the
- * cached windows are returned and the calendar is marked failed, so the page
- * can prompt a reconnect without losing what it already knows.
+ * Returns fresh events for the connection, fetching stale or missing months
+ * from the provider. When the provider or its credentials fail, the cached
+ * months are returned and the calendar is marked failed, so the page can
+ * prompt a reconnect without losing what it already knows.
  */
 export async function readCalendar(
   deps: CalendarReaderDeps,

@@ -5,6 +5,8 @@ import type { CalendarProvider } from "../data/types";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
 const RANGE = { start: "2026-10-15T00:00:00.000Z", end: "2026-10-16T00:00:00.000Z" };
+// The server cache stores whole UTC months; a day inside October reads October.
+const OCTOBER = { start: "2026-10-01T00:00:00.000Z", end: "2026-11-01T00:00:00.000Z" };
 const CONNECTION = { id: "conn-1", provider: "google", providerUserId: "sub-1" };
 const EVENT = {
   id: "e1",
@@ -37,10 +39,15 @@ function deps(cache: ServerEventCache, p: CalendarProvider | null): CalendarRead
 }
 
 describe("readCalendar", () => {
-  // Monthly windows are clipped to the requested range, so a day is one window.
-  it("fetches a missing window from the provider and stores it in the server cache", async () => {
+  it("fetches the missing month from the provider, caches it, and returns the requested range", async () => {
     const { cache, set } = memoryCache();
-    const fetchEvents = vi.fn(async () => [EVENT]);
+    const LATER = {
+      ...EVENT,
+      id: "e2",
+      start: "2026-10-20T09:00:00.000Z",
+      end: "2026-10-20T10:00:00.000Z",
+    };
+    const fetchEvents = vi.fn(async () => [EVENT, LATER]);
 
     const result = await readCalendar(
       deps(cache, provider(fetchEvents)),
@@ -49,20 +56,31 @@ describe("readCalendar", () => {
       RANGE
     );
 
-    expect(fetchEvents).toHaveBeenCalledWith(RANGE);
-    expect(set).toHaveBeenCalledWith("user-1", "conn-1", expect.objectContaining({ range: RANGE }));
+    expect(fetchEvents).toHaveBeenCalledWith(OCTOBER);
+    expect(set).toHaveBeenCalledWith(
+      "user-1",
+      "conn-1",
+      expect.objectContaining({ range: OCTOBER, events: [EVENT, LATER] })
+    );
     expect(result).toEqual({
       calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
       failed: false,
     });
   });
 
-  // The refresh policy refetches anything reaching into the next day; past
-  // windows are served from the cache.
-  it("serves a cached past window without calling the provider", async () => {
-    const PAST = { start: "2026-10-01T00:00:00.000Z", end: "2026-10-02T00:00:00.000Z" };
+  // Past months are never refetched automatically.
+  it("serves a cached past month without calling the provider", async () => {
+    const PAST = { start: "2026-09-10T00:00:00.000Z", end: "2026-09-11T00:00:00.000Z" };
+    const SEPT_EVENT = {
+      ...EVENT,
+      start: "2026-09-10T09:00:00.000Z",
+      end: "2026-09-10T09:15:00.000Z",
+    };
     const { cache } = memoryCache({
-      [`google:${PAST.start}`]: { events: [EVENT], fetchedAt: "2026-10-02T06:00:00.000Z" },
+      "google:2026-09-01T00:00:00.000Z": {
+        events: [SEPT_EVENT],
+        fetchedAt: "2026-10-02T06:00:00.000Z",
+      },
     });
     const fetchEvents = vi.fn();
 
@@ -74,13 +92,30 @@ describe("readCalendar", () => {
     );
 
     expect(fetchEvents).not.toHaveBeenCalled();
-    expect(result.calendar.events).toEqual([EVENT]);
+    expect(result.calendar.events).toEqual([SEPT_EVENT]);
     expect(result.failed).toBe(false);
+  });
+
+  it("serves a near-future month fetched within the freshness period from the cache", async () => {
+    const { cache } = memoryCache({
+      [`google:${OCTOBER.start}`]: { events: [EVENT], fetchedAt: "2026-10-15T11:50:00.000Z" },
+    });
+    const fetchEvents = vi.fn();
+
+    const result = await readCalendar(
+      deps(cache, provider(fetchEvents)),
+      "user-1",
+      CONNECTION,
+      RANGE
+    );
+
+    expect(fetchEvents).not.toHaveBeenCalled();
+    expect(result.calendar.events).toEqual([EVENT]);
   });
 
   it("falls back to cached events and reports the calendar when credentials fail", async () => {
     const { cache } = memoryCache({
-      [`google:${RANGE.start}`]: { events: [EVENT], fetchedAt: "2026-10-01T00:00:00.000Z" },
+      [`google:${OCTOBER.start}`]: { events: [EVENT], fetchedAt: "2026-10-01T00:00:00.000Z" },
     });
     const fetchEvents = vi.fn(async () => {
       throw new Error("Calendar access was revoked or expired; reconnect required");

@@ -4,6 +4,13 @@ import type { TimeRange } from "./types";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * How long a near-future range stays fresh after a successful fetch. Within
+ * this time it is served from the cache, so repeated page loads, and views
+ * that share a month, do not each call the provider.
+ */
+export const NEAR_FUTURE_FRESH_FOR_MS = 15 * 60 * 1000;
+
+/**
  * Decides whether a cached time range should be refreshed from the network.
  *
  * The policy encodes the app's data rules:
@@ -14,7 +21,8 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
  *   returns `false` for it.
  * - **Near-future data refreshes automatically.** If the range extends into the
  *   future and any part of it falls within one calendar day from `now`, it
- *   refreshes so freshly-added events appear on open.
+ *   refreshes once its last fetch is at least {@link NEAR_FUTURE_FRESH_FOR_MS}
+ *   old, so freshly-added events appear on open.
  * - **Far-future data** that is already cached is left as-is until the
  *   near-future window catches up to it.
  *
@@ -38,10 +46,22 @@ export function shouldRefresh(
   if (rangeEnd <= nowMs) return false;
 
   // The range reaches into the future. Auto-refresh when part of it lies within
-  // the next calendar day.
+  // the next calendar day and the cached copy has outlived its freshness.
   const rangeStart = new Date(range.start).getTime();
   const nearFutureCutoff = nowMs + ONE_DAY_MS;
   const touchesNearFuture = rangeStart < nearFutureCutoff;
+  if (!touchesNearFuture) return false;
 
-  return touchesNearFuture;
+  return nowMs - new Date(lastFetchedAt).getTime() >= NEAR_FUTURE_FRESH_FOR_MS;
+}
+
+/**
+ * The part of the timeline the near-future rule refreshes automatically:
+ * from `now` to one day ahead. A background refresh keeps this range warm.
+ */
+export function nearFutureRange(now: Date): TimeRange {
+  return {
+    start: now.toISOString(),
+    end: new Date(now.getTime() + ONE_DAY_MS).toISOString(),
+  };
 }

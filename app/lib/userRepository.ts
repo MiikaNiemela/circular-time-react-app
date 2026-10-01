@@ -27,6 +27,11 @@ export interface CalendarConnection {
   providerUserId: string;
 }
 
+/** A calendar connection together with the application account that owns it. */
+export interface OwnedCalendarConnection extends CalendarConnection {
+  userId: string;
+}
+
 /**
  * Contract for application-account persistence.
  */
@@ -67,6 +72,11 @@ export interface UserRepository {
   getCalendarConnectionId(userId: string, provider: string): Promise<string | null>;
   /** Returns each provider's immutable ID and identity for a user's active calendar connections. */
   getCalendarConnections(userId: string): Promise<CalendarConnection[]>;
+  /**
+   * Returns every calendar connection, across all accounts, that has stored
+   * credentials and so can be read without its user present.
+   */
+  listRefreshableCalendarConnections(): Promise<OwnedCalendarConnection[]>;
   /** Returns the provider IDs whose identities can sign in to the application account. */
   getSignInProviders(userId: string): Promise<string[]>;
   /** Returns the provider IDs (e.g. `"google"`, `"outlook"`) with active calendar access. */

@@ -174,4 +174,27 @@ describe("ServerCalendarCache", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("span");
   });
+
+  it("fetches the whole month for a shorter range and returns only events in the range", async () => {
+    const day: TimeRange = { start: "2026-01-10T00:00:00.000Z", end: "2026-01-11T00:00:00.000Z" };
+    const onDay = { ...EVENTS[0], id: "on-day" };
+    const otherDay = {
+      ...EVENTS[0],
+      id: "other-day",
+      start: "2026-01-20T09:00:00Z",
+      end: "2026-01-20T10:00:00Z",
+    };
+    cacheGet.mockResolvedValue(null);
+    providerFetchEvents.mockResolvedValue([onDay, otherDay]);
+
+    const result = await wrapper.fetchEvents(day);
+
+    expect(providerFetchEvents).toHaveBeenCalledWith(WINDOW);
+    expect(cacheSet).toHaveBeenCalledWith(
+      "user-uuid",
+      "connection-uuid",
+      expect.objectContaining({ range: WINDOW, events: [onDay, otherDay] })
+    );
+    expect(result).toEqual([onDay]);
+  });
 });

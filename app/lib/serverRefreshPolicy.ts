@@ -1,8 +1,8 @@
 /**
  * Server-side helpers for incremental calendar event refresh.
- * Splits requested time ranges into monthly windows so the cache stores
- * and retrieves only the portions that are stale or uncovered, rather than
- * re-fetching the entire year on every request.
+ * The server cache stores whole UTC calendar months, so every view and the
+ * background refresh read and write the same cache keys, and a request only
+ * fetches the months that are stale or missing.
  */
 import type { CalendarEvent, TimeRange } from "../data/types";
 
@@ -10,23 +10,40 @@ import type { CalendarEvent, TimeRange } from "../data/types";
 export { eventWindow } from "../data/eventSlices";
 
 /**
- * Splits a TimeRange into one-month windows aligned to UTC month boundaries.
- * The first window starts at `range.start`; subsequent windows start at the
- * first of each calendar month; the last window ends at `range.end`.
+ * Returns the whole UTC calendar months that cover a TimeRange, in order.
+ * The first window starts on the first of the month containing `range.start`;
+ * the last window ends on the first of the month after the one containing the
+ * last instant before `range.end`. Windows are contiguous.
  */
-export function splitIntoMonthlyWindows(range: TimeRange): TimeRange[] {
+export function monthlyWindowsCovering(range: TimeRange): TimeRange[] {
   const windows: TimeRange[] = [];
-  let cursor = new Date(range.start);
+  const start = new Date(range.start);
   const end = new Date(range.end);
+  if (end <= start) return windows;
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
 
   while (cursor < end) {
-    const nextMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
-    const windowEnd = nextMonth < end ? nextMonth : end;
-    windows.push({ start: cursor.toISOString(), end: windowEnd.toISOString() });
-    cursor = windowEnd;
+    const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+    windows.push({ start: cursor.toISOString(), end: next.toISOString() });
+    cursor = next;
   }
 
   return windows;
+}
+
+/**
+ * Keeps the events whose half-open `[start, end)` interval intersects the
+ * range. A zero-length event is kept when its instant lies inside the range.
+ */
+export function eventsOverlapping(events: CalendarEvent[], range: TimeRange): CalendarEvent[] {
+  const rangeStart = new Date(range.start).getTime();
+  const rangeEnd = new Date(range.end).getTime();
+  return events.filter((event) => {
+    const start = new Date(event.start).getTime();
+    const end = new Date(event.end).getTime();
+    if (end === start) return start >= rangeStart && start < rangeEnd;
+    return start < rangeEnd && end > rangeStart;
+  });
 }
 
 /**
