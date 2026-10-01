@@ -6,9 +6,13 @@ dist/
 .env
 .env.*
 !.env.example
-.vscode/settings.json
 *storybook.log
 storybook-static
+
+# Omit IDE settings
+*.code-workspace
+.vscode/settings.json
+
 
 # Terraform
 .terraform/
