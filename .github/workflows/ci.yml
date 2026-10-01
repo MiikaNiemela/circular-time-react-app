@@ -40,7 +40,7 @@ jobs:
         run: npm run lint:md
 
       - name: Unit tests
-        run: npx vitest run --project unit
+        run: npx vitest run --project 'unit-*'
 
       - name: Storybook component tests
         run: npx vitest run --project storybook
