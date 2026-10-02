@@ -180,4 +180,53 @@ describe("readCalendar", () => {
       failed: true,
     });
   });
+
+  describe("cache fallback across a month boundary", () => {
+    const BOUNDARY_RANGE = {
+      start: "2026-10-31T00:00:00.000Z",
+      end: "2026-11-02T00:00:00.000Z",
+    };
+    const span = (title: string) => ({
+      id: "span",
+      calendarId: "google",
+      title,
+      start: "2026-10-31T22:00:00.000Z",
+      end: "2026-11-01T02:00:00.000Z",
+    });
+    const failing = provider(async () => {
+      throw new Error("Google Calendar fetch failed: 503");
+    });
+
+    it("serves the most recently fetched copy of a spanning event", async () => {
+      const { cache } = memoryCache({
+        "google:2026-10-01T00:00:00.000Z": {
+          events: [span("Old")],
+          fetchedAt: "2026-10-31T23:00:00.000Z",
+        },
+        "google:2026-11-01T00:00:00.000Z": {
+          events: [span("New")],
+          fetchedAt: "2026-11-01T00:30:00.000Z",
+        },
+      });
+
+      const result = await readCalendar(deps(cache, failing), "user-1", CONNECTION, BOUNDARY_RANGE);
+
+      expect(result.failed).toBe(true);
+      expect(result.calendar.events).toEqual([span("New")]);
+    });
+
+    it("drops a spanning event that a more recently fetched month no longer has", async () => {
+      const { cache } = memoryCache({
+        "google:2026-10-01T00:00:00.000Z": {
+          events: [span("Old")],
+          fetchedAt: "2026-10-31T23:00:00.000Z",
+        },
+        "google:2026-11-01T00:00:00.000Z": { events: [], fetchedAt: "2026-11-01T00:30:00.000Z" },
+      });
+
+      const result = await readCalendar(deps(cache, failing), "user-1", CONNECTION, BOUNDARY_RANGE);
+
+      expect(result.calendar.events).toEqual([]);
+    });
+  });
 });

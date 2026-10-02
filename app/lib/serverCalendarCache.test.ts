@@ -197,4 +197,97 @@ describe("ServerCalendarCache", () => {
     );
     expect(result).toEqual([onDay]);
   });
+
+  describe("events spanning a month boundary", () => {
+    // At 01:00 on 1 November, October is past and is not refreshed by the
+    // policy, while November is near-future and is.
+    const AFTER_BOUNDARY = new Date("2026-11-01T01:00:00.000Z");
+    const OCT = { start: "2026-10-01T00:00:00.000Z", end: "2026-11-01T00:00:00.000Z" };
+    const NOV = { start: "2026-11-01T00:00:00.000Z", end: "2026-12-01T00:00:00.000Z" };
+    const DAY_VIEW: TimeRange = {
+      start: "2026-10-31T00:00:00.000Z",
+      end: "2026-11-02T00:00:00.000Z",
+    };
+    const span = (title: string) => ({
+      id: "span",
+      calendarId: "google",
+      title,
+      start: "2026-10-31T22:00:00.000Z",
+      end: "2026-11-01T02:00:00.000Z",
+    });
+
+    function boundaryCache(octEvents: unknown[]) {
+      const entries = new Map<string, CacheEntry>([
+        [
+          OCT.start,
+          {
+            calendarId: "google",
+            range: OCT,
+            events: octEvents as CacheEntry["events"],
+            fetchedAt: "2026-10-31T23:00:00.000Z",
+          },
+        ],
+      ]);
+      const cache: ServerEventCache = {
+        get: async (_u, _c, range) => entries.get(range.start) ?? null,
+        set: async (_u, _c, entry) => {
+          entries.set(entry.range.start, entry);
+        },
+      };
+      return { cache, entries };
+    }
+
+    function reader(cache: ServerEventCache, byMonth: Record<string, unknown[]>) {
+      const fetchEvents = vi.fn(
+        async (window: TimeRange) =>
+          (byMonth[window.start] ?? []) as Awaited<ReturnType<CalendarProvider["fetchEvents"]>>
+      );
+      const wrapper = new ServerCalendarCache(
+        { id: "google", name: "Google Calendar", fetchEvents },
+        cache,
+        "user-uuid",
+        "connection-uuid",
+        () => AFTER_BOUNDARY
+      );
+      return { wrapper, fetchEvents };
+    }
+
+    it("returns the edited event when a newer month disagrees with a frozen month", async () => {
+      const { cache, entries } = boundaryCache([span("Old")]);
+      const { wrapper, fetchEvents } = reader(cache, {
+        [OCT.start]: [span("New")],
+        [NOV.start]: [span("New")],
+      });
+
+      const result = await wrapper.fetchEvents(DAY_VIEW);
+
+      expect(result).toEqual([span("New")]);
+      // The contradicted past month is refetched once, so the cache agrees too.
+      expect(fetchEvents.mock.calls.map(([w]) => w.start)).toEqual([NOV.start, OCT.start]);
+      expect(entries.get(OCT.start)?.events).toEqual([span("New")]);
+    });
+
+    it("drops an event deleted at the provider that a frozen month still holds", async () => {
+      const { cache } = boundaryCache([span("Old")]);
+      const { wrapper } = reader(cache, { [OCT.start]: [], [NOV.start]: [] });
+
+      expect(await wrapper.fetchEvents(DAY_VIEW)).toEqual([]);
+    });
+
+    it("keeps an event shortened to end before the boundary", async () => {
+      const shortened = { ...span("Old"), end: "2026-10-31T23:30:00.000Z" };
+      const { cache } = boundaryCache([span("Old")]);
+      const { wrapper } = reader(cache, { [OCT.start]: [shortened], [NOV.start]: [] });
+
+      expect(await wrapper.fetchEvents(DAY_VIEW)).toEqual([shortened]);
+    });
+
+    it("does not refetch a frozen month that agrees with the newer month", async () => {
+      const { cache } = boundaryCache([span("Same")]);
+      const { wrapper, fetchEvents } = reader(cache, { [NOV.start]: [span("Same")] });
+
+      expect(await wrapper.fetchEvents(DAY_VIEW)).toEqual([span("Same")]);
+      expect(fetchEvents.mock.calls.map(([w]) => w.start)).toEqual([NOV.start]);
+    });
+  });
 });

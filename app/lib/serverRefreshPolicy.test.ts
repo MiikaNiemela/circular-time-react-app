@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  deduplicateEvents,
+  contradictedWindows,
   eventsOverlapping,
+  mergeWindows,
   monthlyWindowsCovering,
 } from "./serverRefreshPolicy";
 
@@ -87,92 +88,64 @@ describe("eventsOverlapping", () => {
   });
 });
 
-describe("deduplicateEvents", () => {
-  it("returns an empty array unchanged", () => {
-    expect(deduplicateEvents([])).toEqual([]);
+describe("mergeWindows and contradictedWindows", () => {
+  const OCT = { start: "2026-10-01T00:00:00.000Z", end: "2026-11-01T00:00:00.000Z" };
+  const NOV = { start: "2026-11-01T00:00:00.000Z", end: "2026-12-01T00:00:00.000Z" };
+  const EARLY = "2026-10-31T23:00:00.000Z";
+  const LATE = "2026-11-01T00:30:00.000Z";
+  const event = (id: string, title: string, start: string, end: string) => ({
+    id,
+    calendarId: "g",
+    title,
+    start,
+    end,
   });
+  const span = (title: string) =>
+    event("span", title, "2026-10-31T22:00:00.000Z", "2026-11-01T02:00:00.000Z");
+  const octOnly = event("oct", "Oct", "2026-10-10T09:00:00.000Z", "2026-10-10T10:00:00.000Z");
 
-  it("returns events unchanged when all ids are unique", () => {
-    const events = [
-      {
-        id: "a",
-        calendarId: "g",
-        title: "A",
-        start: "2026-01-01T09:00:00Z",
-        end: "2026-01-01T10:00:00Z",
-      },
-      {
-        id: "b",
-        calendarId: "g",
-        title: "B",
-        start: "2026-01-02T09:00:00Z",
-        end: "2026-01-02T10:00:00Z",
-      },
+  it("keeps one copy of an event held by two windows fetched together, in window order", () => {
+    const windows = [
+      { range: OCT, fetchedAt: LATE, events: [octOnly, span("Same")] },
+      { range: NOV, fetchedAt: LATE, events: [span("Same")] },
     ];
-    expect(deduplicateEvents(events)).toEqual(events);
+    expect(mergeWindows(windows)).toEqual([octOnly, span("Same")]);
+    expect(contradictedWindows(windows)).toEqual([]);
   });
 
-  it("removes duplicates, keeping the first occurrence", () => {
-    const e1 = {
-      id: "dup",
-      calendarId: "g",
-      title: "First",
-      start: "2026-01-01T09:00:00Z",
-      end: "2026-01-01T10:00:00Z",
-    };
-    const e2 = {
-      id: "dup",
-      calendarId: "g",
-      title: "Second",
-      start: "2026-01-01T09:00:00Z",
-      end: "2026-01-01T10:00:00Z",
-    };
-    const result = deduplicateEvents([e1, e2]);
-    expect(result).toHaveLength(1);
-    expect(result[0].title).toBe("First");
-  });
-
-  it("handles multiple distinct duplicates", () => {
-    const events = [
-      {
-        id: "a",
-        calendarId: "g",
-        title: "A1",
-        start: "2026-01-01T09:00:00Z",
-        end: "2026-01-01T10:00:00Z",
-      },
-      {
-        id: "b",
-        calendarId: "g",
-        title: "B1",
-        start: "2026-01-02T09:00:00Z",
-        end: "2026-01-02T10:00:00Z",
-      },
-      {
-        id: "a",
-        calendarId: "g",
-        title: "A2",
-        start: "2026-01-01T09:00:00Z",
-        end: "2026-01-01T10:00:00Z",
-      },
-      {
-        id: "b",
-        calendarId: "g",
-        title: "B2",
-        start: "2026-01-02T09:00:00Z",
-        end: "2026-01-02T10:00:00Z",
-      },
-      {
-        id: "c",
-        calendarId: "g",
-        title: "C",
-        start: "2026-01-03T09:00:00Z",
-        end: "2026-01-03T10:00:00Z",
-      },
+  it("uses the most recently fetched copy of an event", () => {
+    const windows = [
+      { range: OCT, fetchedAt: EARLY, events: [span("Old")] },
+      { range: NOV, fetchedAt: LATE, events: [span("New")] },
     ];
-    const result = deduplicateEvents(events);
-    expect(result).toHaveLength(3);
-    expect(result.map((e) => e.id)).toEqual(["a", "b", "c"]);
-    expect(result.map((e) => e.title)).toEqual(["A1", "B1", "C"]);
+    expect(mergeWindows(windows)).toEqual([span("New")]);
+    expect(contradictedWindows(windows)).toEqual([0]);
+  });
+
+  it("drops a copy that a more recently fetched overlapping window no longer holds", () => {
+    const windows = [
+      { range: OCT, fetchedAt: EARLY, events: [octOnly, span("Old")] },
+      { range: NOV, fetchedAt: LATE, events: [] },
+    ];
+    expect(mergeWindows(windows)).toEqual([octOnly]);
+    expect(contradictedWindows(windows)).toEqual([0]);
+  });
+
+  it("ignores newer windows that do not overlap the event", () => {
+    const windows = [
+      { range: OCT, fetchedAt: EARLY, events: [octOnly] },
+      { range: NOV, fetchedAt: LATE, events: [] },
+    ];
+    expect(mergeWindows(windows)).toEqual([octOnly]);
+    expect(contradictedWindows(windows)).toEqual([]);
+  });
+
+  it("does not let an older window contradict a newer one", () => {
+    const windows = [
+      { range: OCT, fetchedAt: LATE, events: [span("New")] },
+      { range: NOV, fetchedAt: EARLY, events: [] },
+    ];
+    expect(mergeWindows(windows)).toEqual([span("New")]);
+    expect(contradictedWindows(windows)).toEqual([]);
   });
 });
