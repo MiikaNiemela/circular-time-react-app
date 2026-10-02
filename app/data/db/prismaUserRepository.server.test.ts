@@ -365,6 +365,23 @@ describe("PrismaUserRepository", () => {
     });
   });
 
+  describe("listRefreshableCalendarConnections", () => {
+    it("lists connections across accounts that have stored credentials, oldest first", async () => {
+      const rows = [
+        { id: "c1", userId: "u1", provider: "google", providerUserId: "g-1" },
+        { id: "c2", userId: "u2", provider: "outlook", providerUserId: "o-2" },
+      ];
+      calendarConnectionFindMany.mockResolvedValue(rows);
+
+      await expect(repo.listRefreshableCalendarConnections()).resolves.toEqual(rows);
+      expect(calendarConnectionFindMany).toHaveBeenCalledWith({
+        where: { credential: { isNot: null } },
+        select: { id: true, userId: true, provider: true, providerUserId: true },
+        orderBy: { createdAt: "asc" },
+      });
+    });
+  });
+
   describe("getSignInProviders", () => {
     it("lists the providers whose identities sign in to the account, oldest first", async () => {
       findMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);

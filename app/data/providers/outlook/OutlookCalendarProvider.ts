@@ -17,7 +17,17 @@ interface GraphEvent {
 
 interface GraphEventsResponse {
   value?: GraphEvent[];
+  "@odata.nextLink"?: string;
 }
+
+/**
+ * Upper bound on result pages per request. A range needing more pages fails
+ * instead of returning a partial list that the cache would store as complete.
+ */
+export const OUTLOOK_MAX_PAGES = 20;
+
+/** Only Graph's own origin receives the access token. */
+const GRAPH_ORIGIN = new URL(EVENTS_ENDPOINT).origin;
 
 function mapEvent(api: GraphEvent): CalendarEvent {
   return {
@@ -54,26 +64,43 @@ export class OutlookCalendarProvider implements CalendarProvider {
     this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
   }
 
+  /**
+   * Returns every event in the range, following `@odata.nextLink` until the
+   * last page. A next link outside Microsoft Graph is rejected, so the access
+   * token is only sent to Graph. Throws rather than return a partial list.
+   */
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
     const token = await this.accessToken();
-    const url = new URL(EVENTS_ENDPOINT);
-    url.searchParams.set("startDateTime", new Date(range.start).toISOString());
-    url.searchParams.set("endDateTime", new Date(range.end).toISOString());
-    url.searchParams.set("$select", "id,subject,isAllDay,start,end");
-    url.searchParams.set("$top", "1000");
-    url.searchParams.set("$orderby", "start/dateTime");
+    const first = new URL(EVENTS_ENDPOINT);
+    first.searchParams.set("startDateTime", new Date(range.start).toISOString());
+    first.searchParams.set("endDateTime", new Date(range.end).toISOString());
+    first.searchParams.set("$select", "id,subject,isAllDay,start,end");
+    first.searchParams.set("$top", "1000");
+    first.searchParams.set("$orderby", "start/dateTime");
 
-    const res = await this.fetchFn(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`Outlook Calendar fetch failed: ${res.status}`);
+    const events: CalendarEvent[] = [];
+    let url: string = first.toString();
+    for (let page = 0; page < OUTLOOK_MAX_PAGES; page++) {
+      const res = await this.fetchFn(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`Outlook Calendar fetch failed: ${res.status}`);
+      }
+
+      const data = (await res.json()) as GraphEventsResponse;
+      events.push(...(data.value ?? []).filter((e) => e.start && e.end).map(mapEvent));
+      const next = data["@odata.nextLink"];
+      if (!next) return events;
+      if (new URL(next).origin !== GRAPH_ORIGIN) {
+        throw new Error("Outlook Calendar returned a next page outside Microsoft Graph");
+      }
+      url = next;
     }
 
-    const data = (await res.json()) as GraphEventsResponse;
-    return (data.value ?? []).filter((e) => e.start && e.end).map(mapEvent);
+    throw new Error(`Outlook Calendar fetch exceeded ${OUTLOOK_MAX_PAGES} pages`);
   }
 }

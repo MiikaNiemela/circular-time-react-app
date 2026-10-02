@@ -2,12 +2,17 @@
  * Reads one calendar connection's events for a range through the server-side
  * event cache, with the provider built from server-held credentials.
  */
-import type { CalendarProvider, CalendarEvent, TimeRange } from "../data/types";
+import type { CalendarProvider, TimeRange } from "../data/types";
 import type { CalendarEventData } from "./calendarTimeline";
 import type { CalendarConnection } from "./userRepository";
 import type { ServerEventCache } from "./serverEventCache";
 import { ServerCalendarCache } from "./serverCalendarCache";
-import { deduplicateEvents, splitIntoMonthlyWindows } from "./serverRefreshPolicy";
+import {
+  eventsOverlapping,
+  mergeWindows,
+  monthlyWindowsCovering,
+  type FetchedWindow,
+} from "./serverRefreshPolicy";
 
 /** The events to render for one calendar, and whether reading it failed. */
 export interface CalendarReadResult {
@@ -23,32 +28,36 @@ export interface CalendarReaderDeps {
   now?: () => Date;
 }
 
-/** Serves whatever monthly windows are cached; the range is known only when all are. */
+/**
+ * Serves whatever months are cached, merged by fetch time so that an event
+ * spanning a month boundary appears as its most recently fetched copy. The
+ * range is known only when every month is cached.
+ */
 async function cachedEvents(
   cache: ServerEventCache,
   userId: string,
   calendarId: string,
   range: TimeRange
 ): Promise<CalendarEventData> {
-  const events: CalendarEvent[] = [];
+  const windows: FetchedWindow[] = [];
   let allCovered = true;
-  for (const window of splitIntoMonthlyWindows(range)) {
+  for (const window of monthlyWindowsCovering(range)) {
     const entry = await cache.get(userId, calendarId, window);
-    if (entry) events.push(...entry.events);
+    if (entry) windows.push({ range: window, fetchedAt: entry.fetchedAt, events: entry.events });
     else allCovered = false;
   }
   return {
     calendarId,
-    events: deduplicateEvents(events),
+    events: eventsOverlapping(mergeWindows(windows), range),
     fetchedRange: allCovered ? range : null,
   };
 }
 
 /**
- * Returns fresh events for the connection, fetching stale or missing monthly
- * windows from the provider. When the provider or its credentials fail, the
- * cached windows are returned and the calendar is marked failed, so the page
- * can prompt a reconnect without losing what it already knows.
+ * Returns fresh events for the connection, fetching stale or missing months
+ * from the provider. When the provider or its credentials fail, the cached
+ * months are returned and the calendar is marked failed, so the page can
+ * prompt a reconnect without losing what it already knows.
  */
 export async function readCalendar(
   deps: CalendarReaderDeps,
@@ -56,18 +65,18 @@ export async function readCalendar(
   connection: CalendarConnection,
   range: TimeRange
 ): Promise<CalendarReadResult> {
-  const provider = deps.providerFor(userId, connection);
-  if (provider) {
-    try {
+  try {
+    const provider = deps.providerFor(userId, connection);
+    if (provider) {
       const reader = new ServerCalendarCache(provider, deps.cache, userId, connection.id, deps.now);
       const events = await reader.fetchEvents(range);
       return {
         calendar: { calendarId: connection.provider, events, fetchedRange: range },
         failed: false,
       };
-    } catch (error: unknown) {
-      console.warn(`failed to refresh ${connection.provider}:`, error);
     }
+  } catch (error: unknown) {
+    console.warn(`failed to refresh ${connection.provider}:`, error);
   }
   return {
     calendar: await cachedEvents(deps.cache, userId, connection.provider, range),

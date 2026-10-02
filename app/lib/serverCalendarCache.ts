@@ -1,17 +1,32 @@
 /**
  * A `CalendarProvider` wrapper that fronts a server-side event cache.
- * Splits requested ranges into monthly windows; only stale or uncovered windows
- * are fetched from the underlying provider.
+ * Requests are served from whole UTC calendar months; only stale or uncovered
+ * months are fetched from the underlying provider.
  */
 import type { CalendarProvider, CalendarEvent, TimeRange } from "../data/types";
 import type { ServerEventCache } from "./serverEventCache";
 import { shouldRefresh } from "../data/refreshPolicy";
-import { splitIntoMonthlyWindows, deduplicateEvents } from "./serverRefreshPolicy";
+import {
+  contradictedWindows,
+  eventsOverlapping,
+  mergeWindows,
+  monthlyWindowsCovering,
+  type FetchedWindow,
+} from "./serverRefreshPolicy";
 
 /**
  * Wraps a `CalendarProvider` with an incremental server-side cache-aside policy.
- * The requested range is split into UTC-aligned monthly windows; each window is
- * served from cache when fresh, or fetched and cached independently when stale.
+ * The requested range is covered by whole UTC calendar months, so every view
+ * shares the same cache keys. Each month is served from cache when fresh, or
+ * fetched and cached independently when stale; the result is clipped to the
+ * requested range.
+ *
+ * An event spanning a month boundary is held by both months, which can be
+ * fetched at different times: a past month is never refreshed by the policy.
+ * When a more recently fetched month contradicts a cached month's copy of an
+ * event (a different version, or the event is gone), the cached month is
+ * refetched once, so an edited or deleted event is not served from a frozen
+ * month. Copies are then merged by fetch time (see {@link mergeWindows}).
  */
 export class ServerCalendarCache implements CalendarProvider {
   constructor(
@@ -31,25 +46,35 @@ export class ServerCalendarCache implements CalendarProvider {
   }
 
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
-    const windows = splitIntoMonthlyWindows(range);
-    const allEvents: CalendarEvent[] = [];
+    const windows: Array<FetchedWindow & { fromCache: boolean }> = [];
 
-    for (const window of windows) {
+    for (const window of monthlyWindowsCovering(range)) {
       const cached = await this.cache.get(this.userId, this.provider.id, window);
       if (cached && !shouldRefresh(window, cached.fetchedAt, this.now())) {
-        allEvents.push(...cached.events);
-        continue;
+        windows.push({ ...cached, range: window, fromCache: true });
+      } else {
+        windows.push({ ...(await this.fetchAndStore(window)), fromCache: false });
       }
-      const events = await this.provider.fetchEvents(window);
-      await this.cache.set(this.userId, this.calendarConnectionId, {
-        calendarId: this.provider.id,
-        range: window,
-        events,
-        fetchedAt: this.now().toISOString(),
-      });
-      allEvents.push(...events);
     }
 
-    return deduplicateEvents(allEvents);
+    for (const i of contradictedWindows(windows)) {
+      if (windows[i].fromCache) {
+        windows[i] = { ...(await this.fetchAndStore(windows[i].range)), fromCache: false };
+      }
+    }
+
+    return eventsOverlapping(mergeWindows(windows), range);
+  }
+
+  private async fetchAndStore(window: TimeRange): Promise<FetchedWindow> {
+    const events = await this.provider.fetchEvents(window);
+    const fetchedAt = this.now().toISOString();
+    await this.cache.set(this.userId, this.calendarConnectionId, {
+      calendarId: this.provider.id,
+      range: window,
+      events,
+      fetchedAt,
+    });
+    return { range: window, fetchedAt, events };
   }
 }

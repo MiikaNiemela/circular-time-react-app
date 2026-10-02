@@ -13,7 +13,14 @@ interface GoogleApiEvent {
 
 interface GoogleApiEventsList {
   items?: GoogleApiEvent[];
+  nextPageToken?: string;
 }
+
+/**
+ * Upper bound on result pages per request. A range needing more pages fails
+ * instead of returning a partial list that the cache would store as complete.
+ */
+export const GOOGLE_MAX_PAGES = 20;
 
 /** Maps a Google API event into our normalised `CalendarEvent`. */
 function mapEvent(api: GoogleApiEvent): CalendarEvent {
@@ -54,24 +61,37 @@ export class GoogleCalendarProvider implements CalendarProvider {
     this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
   }
 
+  /**
+   * Returns every event in the range, following `nextPageToken` until the
+   * last page. Throws rather than return a partial list.
+   */
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
     const token = await this.accessToken();
+    const events: CalendarEvent[] = [];
+    let pageToken: string | undefined;
 
-    const url = new URL(EVENTS_ENDPOINT);
-    url.searchParams.set("timeMin", new Date(range.start).toISOString());
-    url.searchParams.set("timeMax", new Date(range.end).toISOString());
-    // Expand recurring events into instances and order them for slicing.
-    url.searchParams.set("singleEvents", "true");
-    url.searchParams.set("orderBy", "startTime");
-    url.searchParams.set("maxResults", "2500");
-    const res = await this.fetchFn(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      throw new Error(`Google Calendar fetch failed: ${res.status}`);
+    for (let page = 0; page < GOOGLE_MAX_PAGES; page++) {
+      const url = new URL(EVENTS_ENDPOINT);
+      url.searchParams.set("timeMin", new Date(range.start).toISOString());
+      url.searchParams.set("timeMax", new Date(range.end).toISOString());
+      // Expand recurring events into instances and order them for slicing.
+      url.searchParams.set("singleEvents", "true");
+      url.searchParams.set("orderBy", "startTime");
+      url.searchParams.set("maxResults", "2500");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const res = await this.fetchFn(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error(`Google Calendar fetch failed: ${res.status}`);
+      }
+
+      const data = (await res.json()) as GoogleApiEventsList;
+      events.push(...(data.items ?? []).filter((e) => e.start && e.end).map(mapEvent));
+      if (!data.nextPageToken) return events;
+      pageToken = data.nextPageToken;
     }
 
-    const data = (await res.json()) as GoogleApiEventsList;
-    return (data.items ?? []).filter((e) => e.start && e.end).map(mapEvent);
+    throw new Error(`Google Calendar fetch exceeded ${GOOGLE_MAX_PAGES} pages`);
   }
 }

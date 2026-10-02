@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { GoogleCalendarProvider } from "./GoogleCalendarProvider";
+import { GOOGLE_MAX_PAGES, GoogleCalendarProvider } from "./GoogleCalendarProvider";
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
@@ -143,5 +143,61 @@ describe("GoogleCalendarProvider", () => {
 
     await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("follows nextPageToken and returns the events from every page", async () => {
+    const timed = (id: string) => ({
+      id,
+      start: { dateTime: "2026-06-19T09:00:00Z" },
+      end: { dateTime: "2026-06-19T10:00:00Z" },
+    });
+    const pages: Record<string, unknown> = {
+      first: { items: [timed("p1")], nextPageToken: "t2" },
+      t2: { items: [timed("p2")], nextPageToken: "t3" },
+      t3: { items: [timed("p3")] },
+    };
+    const fetchFn = vi.fn(async (url: string, _init?: RequestInit) =>
+      jsonResponse(pages[new URL(url).searchParams.get("pageToken") ?? "first"])
+    );
+    const accessToken = token();
+    const p = new GoogleCalendarProvider({
+      accessToken,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const events = await p.fetchEvents(RANGE);
+
+    expect(events.map((e) => e.id)).toEqual(["p1", "p2", "p3"]);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(accessToken).toHaveBeenCalledTimes(1);
+    // Each page keeps the original range and filters.
+    for (const [url] of fetchFn.mock.calls) {
+      expect(new URL(url).searchParams.get("timeMin")).toBe("2026-06-19T00:00:00.000Z");
+      expect(new URL(url).searchParams.get("singleEvents")).toBe("true");
+    }
+  });
+
+  it("fails rather than return a partial list when a later page fails", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ items: [], nextPageToken: "t2" }))
+      .mockResolvedValueOnce(jsonResponse({}, false, 500));
+    const p = new GoogleCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 500/);
+  });
+
+  it("fails when the result needs more pages than the limit", async () => {
+    const fetchFn = vi.fn(async () => jsonResponse({ items: [], nextPageToken: "again" }));
+    const p = new GoogleCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/exceeded/);
+    expect(fetchFn).toHaveBeenCalledTimes(GOOGLE_MAX_PAGES);
   });
 });

@@ -31,7 +31,7 @@ The three layers and their boundaries are unchanged; the server-side work added 
 
 **UI layer.** React Router routes (sign-in, timeline, settings, OAuth callbacks) and presentational components. The centrepiece is the circular timeline component, which is purely presentational: given slices, it draws them. It holds no knowledge of calendars. The timeline route reads its events from a server `loader` rather than fetching on render.
 
-**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto) — the same policy runs server-side to fetch only the windows the cache doesn't already cover. It also orchestrates authentication and resolves identity. The server runs each OAuth flow end to end and keeps the provider tokens of connected calendars, encrypted with AES-256-GCM and bound to their user and connection, refreshing them when they expire. A signed, HTTP-only cookie carries an opaque session token that the server resolves to a stable user ID on each request, anchoring server-side data to a user rather than a device. Sessions are stored server-side, so signing out revokes them.
+**Business logic layer.** Converts calendar events into slices for a given view (day/week/month/year), positions them chronologically from the 12 o'clock origin, and applies the refresh policy (past = manual refresh only; future-within-a-day = auto once the cached copy is 15 minutes old) — the same policy runs server-side to fetch only the months the cache doesn't already hold fresh. It also orchestrates authentication and resolves identity. The server runs each OAuth flow end to end and keeps the provider tokens of connected calendars, encrypted with AES-256-GCM and bound to their user and connection, refreshing them when they expire. A signed, HTTP-only cookie carries an opaque session token that the server resolves to a stable user ID on each request, anchoring server-side data to a user rather than a device. Sessions are stored server-side, so signing out revokes them.
 
 **Data layer.** A provider per source (Google, Outlook, imported calendars) behind a common interface, plus repository-backed stores on Postgres/Prisma: the server-side event cache (keyed by user + provider + time range), the user store (application sign-in identities, of which an account may link one per provider, and separate calendar connections), and encrypted calendar credentials. Each cached range and credential is linked to an active calendar connection, so the database removes them when that connection is deleted. The server cache is the source of truth the UI reads from.
 
@@ -51,7 +51,7 @@ The API questions tracked in issue #2 are resolved in [decisions/timeline-api.md
 
 ## Data flow: rendering the timeline
 
-The loader reads each connected calendar through the server cache. Fresh windows come from the database; stale or missing ones are fetched from the provider with the account's stored credentials and cached. When a calendar cannot be read, the loader serves what is cached and the page prompts a reconnect.
+The loader reads each connected calendar through the server cache, which stores whole UTC calendar months. Every view reads the months that cover its range, so the day, week, month, and year views share cache entries. Fresh months come from the database; stale or missing ones are fetched from the provider with the account's stored credentials and cached. The loader returns only the events that overlap the requested range. A month is stored only after every result page has been read: the Google and Outlook providers follow `nextPageToken` and `@odata.nextLink`, and they fail instead of returning a partial list. Outlook next links outside Microsoft Graph are rejected, so the access token goes only to Graph. An event that spans a month boundary is held by both months, which can be fetched at different times because a past month is not refreshed automatically. If a more recently fetched month holds a different version of the event, or no longer holds it, the older month is fetched again. Copies are merged by fetch time, so an edited or deleted event is not served from the older month. When a calendar cannot be read, the loader serves what is cached and the page prompts a reconnect.
 
 ```mermaid
 sequenceDiagram
@@ -62,20 +62,26 @@ sequenceDiagram
     participant API as Calendar provider
 
     U->>L: Open timeline (session → userId)
-    L->>DB: Read cached windows for user + range
-    alt All windows fresh
+    L->>DB: Read cached months covering the range
+    alt All months fresh
         DB->>L: Cached events
-    else Window stale or missing
+    else Month stale or missing
         L->>CR: Access token (refresh if expiring)
         CR->>L: Decrypted token
-        L->>API: Fetch window
+        L->>API: Fetch month
         API->>L: Events
-        L->>DB: Store window
+        L->>DB: Store month
     end
     L->>U: Render MultiCircle (slices per ring)
 ```
 
 The server runs in UTC and does not know the browser's time zone, so it reads a range one day wider on each side than the view; the browser clips events to its local view window.
+
+## Background calendar refresh
+
+`refreshCalendars` (`app/lib/calendarRefresh.ts`) brings calendar data up to date without a signed-in user. For every calendar connection that has stored credentials, it reads the months covering the next day through the same server cache and refresh policy as the loader: missing months and near-future months older than 15 minutes are fetched, fresh months are left alone, and past months are never refetched. Expired access tokens are refreshed with the stored refresh token. Connections are processed one at a time, and a failure in one does not stop the others.
+
+The routine returns a summary: the number of connections attempted and refreshed, and for each failure its connection ID, provider, and reason (`reconnect-required`, `unsupported-provider`, or `provider-error`). The summary contains no user identifiers, tokens, or provider error text. The routine is independent of its trigger; `refreshAllCalendars` in `app/lib/calendarReader.server.ts` wires it to the database for whichever scheduler invokes it.
 
 ## Styling & theming
 
