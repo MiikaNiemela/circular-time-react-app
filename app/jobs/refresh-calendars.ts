@@ -9,7 +9,8 @@
  * - 0: the run completed; individual connections may still have failed and
  *   are listed in the summary.
  * - 1: the run itself failed (for example, the database is unreachable), or
- *   every attempted connection failed.
+ *   no connection refreshed and at least one failed for a reason other than
+ *   needing the user to reconnect.
  */
 import { prisma } from "../data/db/prismaClient.server";
 import { refreshAllCalendars } from "../lib/calendarReader.server";

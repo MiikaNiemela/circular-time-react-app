@@ -60,6 +60,28 @@ describe("runRefreshJob", () => {
     expect(JSON.parse(error.mock.calls[0][0])).toMatchObject({ severity: "ERROR", failures });
   });
 
+  it("exits 0 with a WARNING when every failure only needs the user to reconnect", async () => {
+    const failures = [
+      { calendarConnectionId: "c1", provider: "google", reason: "reconnect-required" as const },
+    ];
+    const { code, log, error } = await run(async () => ({ attempted: 1, refreshed: 0, failures }));
+
+    expect(code).toBe(0);
+    expect(error).not.toHaveBeenCalled();
+    expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({ severity: "WARNING", failures });
+  });
+
+  it("exits 1 when nothing refreshed and a failure is not a reconnect", async () => {
+    const failures = [
+      { calendarConnectionId: "c1", provider: "google", reason: "reconnect-required" as const },
+      { calendarConnectionId: "c2", provider: "outlook", reason: "provider-error" as const },
+    ];
+    const { code, error } = await run(async () => ({ attempted: 2, refreshed: 0, failures }));
+
+    expect(code).toBe(1);
+    expect(JSON.parse(error.mock.calls[0][0])).toMatchObject({ severity: "ERROR" });
+  });
+
   it("logs only the error class and exits 1 when the run throws", async () => {
     const { code, error } = await run(async () => {
       throw new TypeError("connect ECONNREFUSED postgresql://user:secret@db/app");

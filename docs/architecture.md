@@ -89,7 +89,7 @@ The image includes a command-line job that runs the routine once and exits, so a
 node build/jobs/refresh-calendars.js
 ```
 
-The job needs the same runtime configuration as the server: `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`, and the client secret of each connected provider. It prints one JSON log line with the run summary and a `severity` field (`INFO`, `WARNING` when some connections failed, `ERROR` when every connection failed or the run itself failed). It exits with `1` when the run failed or every connection failed, and with `0` otherwise. Running it every 15 minutes, the freshness period, keeps page loads served from the cache.
+The job needs the same runtime configuration as the server: `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`, and the client secret of each connected provider. It prints one JSON log line with the run summary and a `severity` field: `INFO` when every connection refreshed, `WARNING` when some connections failed, and `ERROR` when the run itself failed or no connection refreshed and at least one failed for a reason other than `reconnect-required`. It exits with `1` on `ERROR` and with `0` otherwise. A connection that needs reconnecting waits on its user, so on its own it never fails the run. Running it every 15 minutes, the freshness period, keeps page loads served from the cache.
 
 ## Styling & theming
 
