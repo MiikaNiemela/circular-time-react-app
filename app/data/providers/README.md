@@ -31,9 +31,15 @@ server decides where a valid token comes from (see
 
 - `VITE_GOOGLE_CLIENT_ID`, `VITE_OUTLOOK_CLIENT_ID` — public client IDs, build
   time.
-- `GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE` — runtime
-  Secret Manager resource names of the client secrets; the values are read at
-  runtime and never stored in the image or repository.
+- `GOOGLE_CLIENT_SECRET`, `OUTLOOK_CLIENT_SECRET` — the client secret values,
+  supplied at runtime. Used for local development and by container runtimes
+  that inject secrets as environment variables.
+- `GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE` — Google
+  Secret Manager resource names of the client secrets, read at runtime by the
+  runtime identity. A value set directly takes precedence.
+
+Client secrets are never stored in the image or the repository.
+
 - `TOKEN_ENCRYPTION_KEY` — 32-byte base64 key that encrypts stored provider
   tokens (AES-256-GCM).
 
