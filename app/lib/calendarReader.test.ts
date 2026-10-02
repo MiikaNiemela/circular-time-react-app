@@ -160,4 +160,24 @@ describe("readCalendar", () => {
 
     expect(result.failed).toBe(true);
   });
+
+  it("falls back to the cache when building the provider throws", async () => {
+    const { cache } = memoryCache({
+      [`google:${OCTOBER.start}`]: { events: [EVENT], fetchedAt: "2026-10-01T00:00:00.000Z" },
+    });
+    const throwingDeps: CalendarReaderDeps = {
+      cache,
+      providerFor: () => {
+        throw new Error("client secret unavailable");
+      },
+      now: () => NOW,
+    };
+
+    const result = await readCalendar(throwingDeps, "user-1", CONNECTION, RANGE);
+
+    expect(result).toEqual({
+      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
+      failed: true,
+    });
+  });
 });

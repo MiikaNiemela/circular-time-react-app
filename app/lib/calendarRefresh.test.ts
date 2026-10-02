@@ -206,6 +206,28 @@ describe("refreshCalendars", () => {
     });
   });
 
+  it("records a provider that cannot be built and continues with the others", async () => {
+    const { cache } = memoryCache();
+    const outlook = vi.fn(async () => []);
+
+    const summary = await refreshCalendars({
+      listConnections: async () => [GOOGLE, OUTLOOK],
+      cache,
+      providerFor: (_userId, connection) => {
+        if (connection.provider === "google") throw new Error("client secret unavailable");
+        return provider("outlook", outlook);
+      },
+      now: () => NOW,
+    });
+
+    expect(outlook).toHaveBeenCalled();
+    expect(summary).toEqual({
+      attempted: 2,
+      refreshed: 1,
+      failures: [{ calendarConnectionId: "conn-g", provider: "google", reason: "provider-error" }],
+    });
+  });
+
   it("reports an empty run when no connection has stored credentials", async () => {
     const { cache } = memoryCache();
 

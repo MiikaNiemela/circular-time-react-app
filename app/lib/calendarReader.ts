@@ -60,18 +60,18 @@ export async function readCalendar(
   connection: CalendarConnection,
   range: TimeRange
 ): Promise<CalendarReadResult> {
-  const provider = deps.providerFor(userId, connection);
-  if (provider) {
-    try {
+  try {
+    const provider = deps.providerFor(userId, connection);
+    if (provider) {
       const reader = new ServerCalendarCache(provider, deps.cache, userId, connection.id, deps.now);
       const events = await reader.fetchEvents(range);
       return {
         calendar: { calendarId: connection.provider, events, fetchedRange: range },
         failed: false,
       };
-    } catch (error: unknown) {
-      console.warn(`failed to refresh ${connection.provider}:`, error);
     }
+  } catch (error: unknown) {
+    console.warn(`failed to refresh ${connection.provider}:`, error);
   }
   return {
     calendar: await cachedEvents(deps.cache, userId, connection.provider, range),

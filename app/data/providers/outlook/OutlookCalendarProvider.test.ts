@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { OutlookCalendarProvider } from "./OutlookCalendarProvider";
+import { OUTLOOK_MAX_PAGES, OutlookCalendarProvider } from "./OutlookCalendarProvider";
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
@@ -134,5 +134,80 @@ describe("OutlookCalendarProvider", () => {
 
     await expect(p.fetchEvents(RANGE)).rejects.toThrow(/reconnect required/);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("follows @odata.nextLink and returns the events from every page", async () => {
+    const timed = (id: string) => ({
+      id,
+      start: { dateTime: "2026-06-19T09:00:00", timeZone: "UTC" },
+      end: { dateTime: "2026-06-19T10:00:00", timeZone: "UTC" },
+    });
+    const next = "https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=abc";
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ value: [timed("p1")], "@odata.nextLink": next }))
+      .mockResolvedValueOnce(jsonResponse({ value: [timed("p2")] }));
+    const p = new OutlookCalendarProvider({
+      accessToken: token("server-token"),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const events = await p.fetchEvents(RANGE);
+
+    expect(events.map((e) => e.id)).toEqual(["p1", "p2"]);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fetchFn.mock.calls[1][0]).toBe(next);
+    expect((fetchFn.mock.calls[1][1] as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer server-token",
+    });
+  });
+
+  it("refuses a next link outside Microsoft Graph without sending the token there", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ value: [], "@odata.nextLink": "https://attacker.example/page2" })
+      );
+    const p = new OutlookCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/outside Microsoft Graph/);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails rather than return a partial list when a later page fails", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          value: [],
+          "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=x",
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({}, false, 503));
+    const p = new OutlookCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 503/);
+  });
+
+  it("fails when the result needs more pages than the limit", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({
+        value: [],
+        "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=again",
+      })
+    );
+    const p = new OutlookCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    await expect(p.fetchEvents(RANGE)).rejects.toThrow(/exceeded/);
+    expect(fetchFn).toHaveBeenCalledTimes(OUTLOOK_MAX_PAGES);
   });
 });

@@ -54,12 +54,12 @@ export async function refreshCalendars(deps: CalendarRefreshDeps): Promise<Refre
         reason,
       });
 
-    const provider = deps.providerFor(connection.userId, connection);
-    if (!provider) {
-      fail("unsupported-provider");
-      continue;
-    }
     try {
+      const provider = deps.providerFor(connection.userId, connection);
+      if (!provider) {
+        fail("unsupported-provider");
+        continue;
+      }
       const reader = new ServerCalendarCache(
         provider,
         deps.cache,

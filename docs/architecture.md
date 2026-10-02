@@ -51,7 +51,7 @@ The API questions tracked in issue #2 are resolved in [decisions/timeline-api.md
 
 ## Data flow: rendering the timeline
 
-The loader reads each connected calendar through the server cache, which stores whole UTC calendar months. Every view reads the months that cover its range, so the day, week, month, and year views share cache entries. Fresh months come from the database; stale or missing ones are fetched from the provider with the account's stored credentials and cached. The loader returns only the events that overlap the requested range. When a calendar cannot be read, the loader serves what is cached and the page prompts a reconnect.
+The loader reads each connected calendar through the server cache, which stores whole UTC calendar months. Every view reads the months that cover its range, so the day, week, month, and year views share cache entries. Fresh months come from the database; stale or missing ones are fetched from the provider with the account's stored credentials and cached. The loader returns only the events that overlap the requested range. A month is stored only after every result page has been read: the Google and Outlook providers follow `nextPageToken` and `@odata.nextLink`, and they fail instead of returning a partial list. Outlook next links outside Microsoft Graph are rejected, so the access token goes only to Graph. When a calendar cannot be read, the loader serves what is cached and the page prompts a reconnect.
 
 ```mermaid
 sequenceDiagram
