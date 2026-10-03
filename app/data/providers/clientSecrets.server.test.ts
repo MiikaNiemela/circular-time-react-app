@@ -18,17 +18,28 @@ describe("OAuth client secrets", () => {
     vi.unstubAllEnvs();
   });
 
-  it("rejects before contacting Secret Manager when no resource is configured", async () => {
+  it("rejects before contacting Secret Manager when neither form is configured", async () => {
+    vi.stubEnv("OUTLOOK_CLIENT_SECRET", "");
     vi.stubEnv("OUTLOOK_CLIENT_SECRET_RESOURCE", "");
     const { getOutlookClientSecret } = await import("./clientSecrets.server");
 
     await expect(getOutlookClientSecret()).rejects.toThrow(
-      "OUTLOOK_CLIENT_SECRET_RESOURCE is not configured"
+      "OUTLOOK_CLIENT_SECRET or OUTLOOK_CLIENT_SECRET_RESOURCE is not configured"
     );
     expect(accessSecretVersion).not.toHaveBeenCalled();
   });
 
+  it("uses a value supplied directly without contacting Secret Manager", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "local-google-secret");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET_RESOURCE", "projects/p/secrets/google/versions/latest");
+    const { getGoogleClientSecret } = await import("./clientSecrets.server");
+
+    await expect(getGoogleClientSecret()).resolves.toBe("local-google-secret");
+    expect(accessSecretVersion).not.toHaveBeenCalled();
+  });
+
   it("reads each secret once by resource name and caches the value", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
     vi.stubEnv("GOOGLE_CLIENT_SECRET_RESOURCE", "projects/p/secrets/google/versions/latest");
     accessSecretVersion.mockResolvedValue([{ payload: { data: Buffer.from("google-secret") } }]);
     const { getGoogleClientSecret } = await import("./clientSecrets.server");
@@ -43,6 +54,7 @@ describe("OAuth client secrets", () => {
   });
 
   it("retries after a failed read instead of caching the failure", async () => {
+    vi.stubEnv("OUTLOOK_CLIENT_SECRET", "");
     vi.stubEnv("OUTLOOK_CLIENT_SECRET_RESOURCE", "projects/p/secrets/outlook/versions/latest");
     accessSecretVersion
       .mockRejectedValueOnce(new Error("unavailable"))

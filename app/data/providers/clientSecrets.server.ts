@@ -1,9 +1,14 @@
 /**
- * Reads OAuth client secrets from GCP Secret Manager.
+ * Reads the OAuth client secrets at runtime.
  *
- * Each secret is addressed by a runtime resource name (never the value), and
- * the Cloud Run service account holds the Secret Accessor role on it. Values
- * are cached in-process, so each container makes one RPC per secret.
+ * Each secret is supplied in one of two ways:
+ * - `*_CLIENT_SECRET`: the value itself, for local development and for any
+ *   container runtime that injects secrets as environment variables.
+ * - `*_CLIENT_SECRET_RESOURCE`: a Google Secret Manager version resource name
+ *   (never the value), read with the runtime identity's credentials and cached
+ *   in-process, so each container makes one RPC per secret.
+ *
+ * When both are set, the value is used.
  */
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 
@@ -17,24 +22,31 @@ async function accessSecret(resource: string): Promise<string> {
   return Buffer.isBuffer(payload) ? payload.toString() : String(payload);
 }
 
-function readSecret(resource: string | undefined, variable: string): Promise<string> {
-  if (!resource) return Promise.reject(new Error(`${variable} is not configured`));
-  let value = cache.get(resource);
-  if (!value) {
-    value = accessSecret(resource);
-    // A failed read is not cached, so a transient error is retried next time.
-    value.catch(() => cache.delete(resource));
-    cache.set(resource, value);
+function readSecret(prefix: "GOOGLE" | "OUTLOOK"): Promise<string> {
+  const value = process.env[`${prefix}_CLIENT_SECRET`];
+  if (value) return Promise.resolve(value);
+  const resource = process.env[`${prefix}_CLIENT_SECRET_RESOURCE`];
+  if (!resource) {
+    return Promise.reject(
+      new Error(`${prefix}_CLIENT_SECRET or ${prefix}_CLIENT_SECRET_RESOURCE is not configured`)
+    );
   }
-  return value;
+  let cached = cache.get(resource);
+  if (!cached) {
+    cached = accessSecret(resource);
+    // A failed read is not cached, so a transient error is retried next time.
+    cached.catch(() => cache.delete(resource));
+    cache.set(resource, cached);
+  }
+  return cached;
 }
 
 /** The Google OAuth client secret. */
 export function getGoogleClientSecret(): Promise<string> {
-  return readSecret(process.env.GOOGLE_CLIENT_SECRET_RESOURCE, "GOOGLE_CLIENT_SECRET_RESOURCE");
+  return readSecret("GOOGLE");
 }
 
 /** The Microsoft (Outlook) OAuth client secret. */
 export function getOutlookClientSecret(): Promise<string> {
-  return readSecret(process.env.OUTLOOK_CLIENT_SECRET_RESOURCE, "OUTLOOK_CLIENT_SECRET_RESOURCE");
+  return readSecret("OUTLOOK");
 }

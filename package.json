@@ -15,7 +15,8 @@
   "type": "module",
   "scripts": {
     "dev": "react-router dev",
-    "build": "react-router build",
+    "build": "react-router build && vite build --config vite.jobs.config.ts",
+    "refresh-calendars": "node build/jobs/refresh-calendars.js",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc --noEmit",
     "lint": "eslint app/ --max-warnings=0",

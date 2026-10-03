@@ -81,7 +81,15 @@ The server runs in UTC and does not know the browser's time zone, so it reads a 
 
 `refreshCalendars` (`app/lib/calendarRefresh.ts`) brings calendar data up to date without a signed-in user. For every calendar connection that has stored credentials, it reads the months covering the next day through the same server cache and refresh policy as the loader: missing months and near-future months older than 15 minutes are fetched, fresh months are left alone, and past months are never refetched. Expired access tokens are refreshed with the stored refresh token. Connections are processed one at a time, and a failure in one does not stop the others.
 
-The routine returns a summary: the number of connections attempted and refreshed, and for each failure its connection ID, provider, and reason (`reconnect-required`, `unsupported-provider`, or `provider-error`). The summary contains no user identifiers, tokens, or provider error text. The routine is independent of its trigger; `refreshAllCalendars` in `app/lib/calendarReader.server.ts` wires it to the database for whichever scheduler invokes it.
+The routine returns a summary: the number of connections attempted and refreshed, and for each failure its connection ID, provider, and reason (`reconnect-required`, `unsupported-provider`, or `provider-error`). The summary contains no user identifiers, tokens, or provider error text. The routine is independent of its trigger. `refreshAllCalendars` in `app/lib/calendarReader.server.ts` wires it to the database.
+
+The image includes a command-line job that runs the routine once and exits, so any scheduler can run it the way cron runs a command:
+
+```sh
+node build/jobs/refresh-calendars.js
+```
+
+The job needs the same runtime configuration as the server: `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`, and the client secret of each connected provider. It prints one JSON log line with the run summary and a `severity` field: `INFO` when every connection refreshed, `WARNING` when some connections failed, and `ERROR` when the run itself failed or no connection refreshed and at least one failed for a reason other than `reconnect-required`. It exits with `1` on `ERROR` and with `0` otherwise. A connection that needs reconnecting waits on its user, so on its own it never fails the run. Running it every 15 minutes, the freshness period, keeps page loads served from the cache.
 
 ## Styling & theming
 
@@ -105,7 +113,7 @@ User records and cached calendar events live in a PostgreSQL database through Pr
 
 Google and Microsoft are registered as confidential web clients. The server starts each flow from a same-origin form post, keeps the PKCE verifier and state in a signed, HTTP-only, ten-minute cookie, and redeems the authorization code with the client secret. Sign-in and account linking use identity scopes only and store no provider tokens; a calendar connection also stores the provider's access and refresh tokens.
 
-- Client secrets are read at runtime from the deployment environment's secret manager by resource name (`GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE`) and cached in-process.
+- Client secrets are supplied at runtime, either as values (`GOOGLE_CLIENT_SECRET`, `OUTLOOK_CLIENT_SECRET`) or as Google Secret Manager resource names (`GOOGLE_CLIENT_SECRET_RESOURCE`, `OUTLOOK_CLIENT_SECRET_RESOURCE`) that are read and cached in-process. A value takes precedence over a resource name.
 - Stored provider tokens are encrypted with AES-256-GCM under `TOKEN_ENCRYPTION_KEY`, one application-scoped key. Each ciphertext is bound to its user and calendar connection as additional authenticated data, so it cannot be decrypted in another row. Rotating the key makes stored tokens unreadable, and the affected calendars need to be reconnected.
 - The public client IDs are build configuration. Each app registration lists `<origin>/auth/<provider>/callback` as a web redirect URI, and the Microsoft registration also grants the delegated calendar, offline-access, OpenID, and profile permissions.
 

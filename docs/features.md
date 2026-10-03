@@ -47,7 +47,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Persistent user store | ✅ | **new** | User records, application sign-in provider accounts, and calendar connections in PostgreSQL via Prisma, behind a `userRepository` interface so the driver stays swappable. |
 | Server-side event cache | ✅ | **new** | Calendar events persisted in Postgres, keyed by user + provider + time range; shared across devices; past data never auto-removed. Replaces the old per-device `localStorage` cache. |
 | Server-driven data flow | ✅ | **new** | The timeline reads events from a server `loader`, which fetches stale or missing windows from the providers with the account's stored credentials, refreshing expired access tokens. The browser makes no provider API calls. |
-| Background calendar refresh | ✅ | **new** | `refreshCalendars` refreshes the near-future months of every connected calendar with stored credentials, without a signed-in user. It is trigger-independent; no scheduler invokes it yet. |
+| Background calendar refresh | ✅ | **new** | `refreshCalendars` refreshes the near-future months of every connected calendar with stored credentials, without a signed-in user. It runs as a command-line job (`node build/jobs/refresh-calendars.js`) that any scheduler can invoke. |
 
 ---
 

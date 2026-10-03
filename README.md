@@ -108,6 +108,7 @@ npm i
 npm run start
 npm test
 npm run typecheck
+npm run refresh-calendars   # one background calendar refresh, after npm run build
 ```
 
 Node version is pinned via `.nvmrc`.
