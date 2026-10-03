@@ -15,6 +15,7 @@ import type { CalendarEvent, CalendarEventData } from "../lib/calendarTimeline";
 import { eventWindow } from "../lib/serverRefreshPolicy";
 import { dayClock } from "../lib/dayClock";
 import { useNow } from "../lib/useNow";
+import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
 import {
@@ -64,8 +65,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") ?? "day") as TimeView;
   const refParam = url.searchParams.get("ref");
-  const refDate = refParam ? new Date(refParam) : new Date();
-  const ref = refDate.toISOString().slice(0, 10);
+  const refDate = (refParam && parseLocalDate(refParam)) || new Date();
+  const ref = formatLocalDate(refDate);
 
   if (!userId) {
     if (isProduction()) throw redirect("/sign-in");
@@ -102,9 +103,16 @@ export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const view = (searchParams.get("view") ?? loaderView) as TimeView;
-  // ref falls back to loader default (today) when the URL has no param yet.
-  const refStr = searchParams.get("ref") ?? loaderRef;
-  const reference = useMemo(() => new Date(refStr), [refStr]);
+  // Null until the client has mounted, so nothing here depends on the
+  // server's clock or time zone.
+  const now = useNow();
+  // `ref` is a local calendar day. Without one the view shows the user's
+  // local today, which the server (in UTC) cannot know; until the client has
+  // mounted it uses the loader's day.
+  const refParam = searchParams.get("ref");
+  const refKey =
+    (refParam && parseLocalDate(refParam) && refParam) || (now ? formatLocalDate(now) : loaderRef);
+  const reference = useMemo(() => parseLocalDate(refKey) ?? new Date(), [refKey]);
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showTimeLapse, setShowTimeLapse] = useShowTimeLapse();
@@ -122,9 +130,6 @@ export default function Home() {
   );
   const noCalendars = activeCalendars.length === 0;
 
-  // Null until the client has mounted, so nothing here depends on the
-  // server's clock or time zone.
-  const now = useNow();
   const clock = now ? dayClock(view, reference, now) : null;
 
   const rings = [
@@ -159,7 +164,7 @@ export default function Home() {
   function handleReferenceChange(date: Date) {
     setSearchParams(
       (prev) => {
-        prev.set("ref", date.toISOString().slice(0, 10));
+        prev.set("ref", formatLocalDate(date));
         return prev;
       },
       { replace: true }
@@ -195,7 +200,12 @@ export default function Home() {
             : undefined
         }
       />
-      <PeriodNavigator view={view} value={reference} onChange={handleReferenceChange} />
+      <PeriodNavigator
+        view={view}
+        value={reference}
+        onChange={handleReferenceChange}
+        now={now ?? undefined}
+      />
       <SegmentedControl value={view} onChange={handleViewChange} />
       <label className={timeLapseToggle}>
         <input
