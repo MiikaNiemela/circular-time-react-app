@@ -62,5 +62,7 @@ export const radius = {
 
 /** Font-family stack. */
 export const font = {
-  body: "system-ui, sans-serif",
+  body: '"Hanken Grotesk", system-ui, sans-serif',
+  /** Numerals and times. */
+  mono: '"IBM Plex Mono", ui-monospace, monospace',
 } as const;

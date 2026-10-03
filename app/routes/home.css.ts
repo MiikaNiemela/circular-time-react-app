@@ -2,49 +2,13 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../styles/theme.css";
 import { breakpoints } from "../styles/breakpoints";
 
-export const page = style({
-  minHeight: "100dvh",
-  background: vars.color.background,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  // Tighter gap on narrow screens; the theme lg value is fine for tablet+.
-  gap: vars.space.md,
-  padding: vars.space.md,
-  fontFamily: vars.font.body,
-  "@media": {
-    [breakpoints.sm]: {
-      gap: vars.space.lg,
-    },
-  },
-});
-
 // The timeline SVG has a square viewBox, so width drives the size and the 1:1
-// aspect ratio fills in the height. clamp() keeps it within a narrow mobile
-// viewport while letting it grow on desktop.
+// aspect ratio fills in the height. It fills its column up to 560 px, centred.
 export const timeline = style({
-  width: "clamp(240px, 80vw, 360px)",
-  maxWidth: "100%",
+  width: "min(100%, 560px)",
   height: "auto",
   aspectRatio: "1 / 1",
-  "@media": {
-    [breakpoints.sm]: {
-      width: "clamp(320px, 70vw, 480px)",
-    },
-    [breakpoints.lg]: {
-      width: "clamp(480px, 50vw, 600px)",
-    },
-  },
-});
-
-export const header = style({
-  position: "absolute",
-  top: vars.space.md,
-  right: vars.space.md,
-  display: "flex",
-  gap: vars.space.sm,
-  alignItems: "center",
+  display: "block",
 });
 
 export const emptyState = style({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { arcPath } from "./Slice";
+import { arcPath, readableTextColor } from "./Slice";
 
 const cx = 100;
 const cy = 100;
@@ -37,5 +37,18 @@ describe("arcPath", () => {
     const d = arcPath(cx, cy, r, 0, 90);
     // SVG arc: A rx ry x-rot large-arc sweep x y → sweep is the 5th param
     expect(d).toMatch(/ 0 1 /);
+  });
+});
+
+describe("readableTextColor", () => {
+  it.each([
+    ["#e5e7eb", "#000000"],
+    ["#ffffff", "#000000"],
+    ["#f59e0b", "#000000"],
+    ["#1d4ed8", "#ffffff"],
+    ["#111", "#ffffff"],
+    ["var(--x)", "#ffffff"],
+  ])("puts %s text on %s", (background, text) => {
+    expect(readableTextColor(background)).toBe(text);
   });
 });

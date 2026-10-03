@@ -46,6 +46,7 @@ export const vars = createThemeContract({
   },
   font: {
     body: null,
+    mono: null,
   },
 });
 

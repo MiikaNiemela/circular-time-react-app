@@ -18,15 +18,9 @@ import { useNow } from "../lib/useNow";
 import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
-import {
-  page,
-  header,
-  settingsLink,
-  timeline,
-  emptyState,
-  emptyStateLink,
-  timeLapseToggle,
-} from "./home.css";
+import { SectionPlaceholder, TimelineLayout } from "../components/TimelineLayout";
+import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
+import { settingsLink, timeline, emptyState, emptyStateLink, timeLapseToggle } from "./home.css";
 
 export function meta() {
   return [
@@ -173,73 +167,143 @@ export default function Home() {
     );
   }
 
+  const legendItems = activeCalendars.map((calendar) => ({
+    id: calendar.calendarId,
+    label: calendarLabel(calendar.calendarId),
+  }));
+
   return (
-    <main className={page}>
-      <div className={header}>
-        <DarkModeToggle />
-        <Link to="/settings" className={settingsLink} aria-label="Settings">
-          ⚙
-        </Link>
-      </div>
-      <MultiCircle
-        rings={rings}
-        onSliceClick={handleSliceClick}
-        className={timeline}
-        hand={
-          clock?.handDegrees !== undefined
-            ? { degrees: clock.handDegrees, color: vars.color.now }
-            : undefined
+    <>
+      <TimelineLayout
+        brand={
+          <>
+            <BrandMark />
+            <span>Circular Time</span>
+          </>
         }
-        centerLabel={
-          clock
-            ? {
-                primary: clock.primary,
-                secondary: clock.secondary,
-                color: vars.color.text,
-                secondaryColor: vars.color.textMuted,
-                haloColor: vars.color.background,
+        actions={
+          <>
+            <DarkModeToggle />
+            <Link to="/settings" className={settingsLink} aria-label="Settings">
+              ⚙
+            </Link>
+          </>
+        }
+        controls={
+          <>
+            <SegmentedControl value={view} onChange={handleViewChange} />
+            <PeriodNavigator
+              view={view}
+              value={reference}
+              onChange={handleReferenceChange}
+              // Before mount, compare against the displayed day itself: the server
+              // and the browser can be on different days, and the Today control
+              // must render the same on both. The real time takes over after mount.
+              now={now ?? reference}
+            />
+          </>
+        }
+        circle={
+          <>
+            <MultiCircle
+              rings={rings}
+              onSliceClick={handleSliceClick}
+              className={timeline}
+              labelFontFamily={vars.font.mono}
+              hand={
+                clock?.handDegrees !== undefined
+                  ? { degrees: clock.handDegrees, color: vars.color.now }
+                  : undefined
               }
-            : undefined
+              centerLabel={
+                clock
+                  ? {
+                      primary: clock.primary,
+                      secondary: clock.secondary,
+                      color: vars.color.text,
+                      secondaryColor: vars.color.textMuted,
+                      haloColor: vars.color.background,
+                      fontFamily: vars.font.mono,
+                    }
+                  : undefined
+              }
+            />
+            {noCalendars && (
+              <p className={emptyState}>
+                No calendars connected.{" "}
+                <Link to="/settings" className={emptyStateLink}>
+                  Open Settings
+                </Link>{" "}
+                to add one.
+              </p>
+            )}
+            {failedCalendars.length > 0 && (
+              <p className={emptyState}>
+                Calendar sync failed.{" "}
+                <Link to="/settings" className={emptyStateLink}>
+                  Reconnect in Settings
+                </Link>
+              </p>
+            )}
+          </>
         }
+        sections={[
+          {
+            // All-day icons sit on the circle's arch on narrow layouts; the
+            // list is a wide-layout addition (M13.2).
+            id: "all-day",
+            title: "All day",
+            wideOnly: true,
+            content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
+          },
+          {
+            id: "calendars",
+            title: "Calendars",
+            content: (
+              <>
+                {legendItems.length > 0 && <CalendarLegend items={legendItems} />}
+                <label className={timeLapseToggle}>
+                  <input
+                    type="checkbox"
+                    checked={showTimeLapse}
+                    onChange={(e) => setShowTimeLapse(e.target.checked)}
+                  />
+                  show time lapse
+                </label>
+              </>
+            ),
+          },
+          {
+            id: "agenda",
+            title: "Up next",
+            content: (
+              <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
+            ),
+          },
+        ]}
       />
-      <PeriodNavigator
-        view={view}
-        value={reference}
-        onChange={handleReferenceChange}
-        // Before mount, compare against the displayed day itself: the server
-        // and the browser can be on different days, and the Today control
-        // must render the same on both. The real time takes over after mount.
-        now={now ?? reference}
-      />
-      <SegmentedControl value={view} onChange={handleViewChange} />
-      <label className={timeLapseToggle}>
-        <input
-          type="checkbox"
-          checked={showTimeLapse}
-          onChange={(e) => setShowTimeLapse(e.target.checked)}
-        />
-        show time lapse
-      </label>
-      {noCalendars && (
-        <p className={emptyState}>
-          No calendars connected.{" "}
-          <Link to="/settings" className={emptyStateLink}>
-            Open Settings
-          </Link>{" "}
-          to add one.
-        </p>
-      )}
-      {failedCalendars.length > 0 && (
-        <p className={emptyState}>
-          Calendar sync failed.{" "}
-          <Link to="/settings" className={emptyStateLink}>
-            Reconnect in Settings
-          </Link>
-        </p>
-      )}
       {selectedEvent && (
         <EventDetail event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       )}
-    </main>
+    </>
+  );
+}
+
+/** The product mark: a ring with a gap at the top. */
+function BrandMark() {
+  return (
+    <svg width={22} height={22} viewBox="0 0 22 22" aria-hidden="true">
+      <circle cx={11} cy={11} r={8.5} fill="none" stroke="currentColor" strokeWidth={3} />
+      <circle
+        cx={11}
+        cy={11}
+        r={8.5}
+        fill="none"
+        stroke={vars.color.accent}
+        strokeWidth={3}
+        strokeDasharray="18 100"
+        transform="rotate(-90 11 11)"
+      />
+    </svg>
   );
 }

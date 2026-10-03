@@ -22,6 +22,23 @@ export interface Slice {
   visible?: boolean;
 }
 
+/**
+ * Black or white, whichever reads better on `background` (a `#rgb` or
+ * `#rrggbb` colour), by WCAG contrast. Other colour formats get white.
+ */
+export function readableTextColor(background: string): "#000000" | "#ffffff" {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(background)?.[1];
+  if (!hex) return "#ffffff";
+  const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(full.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // Contrast with black is (L + 0.05) / 0.05; with white, 1.05 / (L + 0.05).
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? "#000000" : "#ffffff";
+}
+
 /** Minimum slice span (degrees) required to render an arched label. */
 export const MIN_LABEL_DEG = 10;
 

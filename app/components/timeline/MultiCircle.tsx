@@ -1,5 +1,5 @@
 import { useId, Fragment } from "react";
-import { arcPath, MIN_LABEL_DEG, type Slice } from "./Slice";
+import { arcPath, MIN_LABEL_DEG, readableTextColor, type Slice } from "./Slice";
 import { interactiveSlice } from "./interactiveSlice.css";
 
 /** One ring within a `MultiCircle`. */
@@ -31,6 +31,8 @@ export interface CircleCenterLabel {
   secondary?: string;
   /** CSS colour of the primary line. */
   color: string;
+  /** CSS font family of both lines; inherited when omitted. */
+  fontFamily?: string;
   /** CSS colour of the secondary line; defaults to `color`. */
   secondaryColor?: string;
   /**
@@ -56,6 +58,8 @@ export interface MultiCircleProps {
    * square `viewBox` lets it scale to any width while keeping its 1:1 ratio).
    */
   className?: string;
+  /** CSS font family of the slice labels (e.g. hour numbers); inherited when omitted. */
+  labelFontFamily?: string;
   /** Optional hand drawn over the rings. It never intercepts clicks. */
   hand?: CircleHand;
   /** Optional text in the centre, drawn above the hand. */
@@ -93,6 +97,7 @@ export function MultiCircle({
   className,
   hand,
   centerLabel,
+  labelFontFamily,
 }: MultiCircleProps) {
   const uid = useId();
 
@@ -201,7 +206,11 @@ export function MultiCircle({
               return (
                 <g key={key}>
                   <path {...sharedProps} d={d!} />
-                  <text fontSize={fontSize} fill="white">
+                  <text
+                    fontSize={fontSize}
+                    fill={readableTextColor(slice.color)}
+                    style={labelFontFamily ? { fontFamily: labelFontFamily } : undefined}
+                  >
                     <textPath href={`#${labelId}`} startOffset="50%" textAnchor="middle">
                       {slice.label}
                     </textPath>
@@ -272,7 +281,12 @@ function CenterLabel({
       : {};
   const primaryY = label.secondary ? cy - secondarySize * 0.6 : cy;
   return (
-    <g data-center-label="true" pointerEvents="none" textAnchor="middle">
+    <g
+      data-center-label="true"
+      pointerEvents="none"
+      textAnchor="middle"
+      style={label.fontFamily ? { fontFamily: label.fontFamily } : undefined}
+    >
       <text
         x={cx}
         y={primaryY}
