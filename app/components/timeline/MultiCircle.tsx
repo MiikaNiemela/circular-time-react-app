@@ -15,6 +15,31 @@ export interface RingConfig {
   size: number;
 }
 
+/** A hand from the centre to the outer edge, e.g. marking the current time. */
+export interface CircleHand {
+  /** Angle clockwise from 12 o'clock, in degrees (0–360). */
+  degrees: number;
+  /** CSS colour of the hand. */
+  color: string;
+}
+
+/** Text centred inside the innermost ring. */
+export interface CircleCenterLabel {
+  /** Large first line, e.g. a time or a day number. */
+  primary: string;
+  /** Smaller second line, e.g. a date. */
+  secondary?: string;
+  /** CSS colour of the primary line. */
+  color: string;
+  /** CSS colour of the secondary line; defaults to `color`. */
+  secondaryColor?: string;
+  /**
+   * CSS colour of a halo drawn behind the text, so it stays legible where a
+   * hand crosses it. Usually the page background. No halo when omitted.
+   */
+  haloColor?: string;
+}
+
 export interface MultiCircleProps {
   /** Rings to render, ordered from outermost to innermost (or any order). */
   rings: RingConfig[];
@@ -31,6 +56,10 @@ export interface MultiCircleProps {
    * square `viewBox` lets it scale to any width while keeping its 1:1 ratio).
    */
   className?: string;
+  /** Optional hand drawn over the rings. It never intercepts clicks. */
+  hand?: CircleHand;
+  /** Optional text in the centre, drawn above the hand. */
+  centerLabel?: CircleCenterLabel;
 }
 
 /**
@@ -58,7 +87,13 @@ export function ringRadius(size: number, lineWidth: number): number {
  * - When a slice has a `label` and spans at least 10°, the label is rendered
  *   as SVG arched text following the arc curve.
  */
-export function MultiCircle({ rings, onSliceClick, className }: MultiCircleProps) {
+export function MultiCircle({
+  rings,
+  onSliceClick,
+  className,
+  hand,
+  centerLabel,
+}: MultiCircleProps) {
   const uid = useId();
 
   if (rings.length === 0) return null;
@@ -183,6 +218,83 @@ export function MultiCircle({ rings, onSliceClick, className }: MultiCircleProps
           })}
         </Fragment>
       ))}
+      {hand && <Hand hand={hand} cx={cx} cy={cy} length={maxSize / 2} />}
+      {centerLabel && <CenterLabel label={centerLabel} cx={cx} cy={cy} size={maxSize} />}
     </svg>
+  );
+}
+
+function Hand({
+  hand,
+  cx,
+  cy,
+  length,
+}: {
+  hand: CircleHand;
+  cx: number;
+  cy: number;
+  length: number;
+}) {
+  const degrees = Math.min(360, Math.max(0, hand.degrees));
+  const rad = ((degrees - 90) * Math.PI) / 180;
+  return (
+    <g data-hand="true" pointerEvents="none" aria-hidden="true" style={{ color: hand.color }}>
+      <line
+        x1={cx}
+        y1={cy}
+        x2={cx + length * Math.cos(rad)}
+        y2={cy + length * Math.sin(rad)}
+        stroke="currentColor"
+        strokeWidth={Math.max(1, length / 100)}
+        strokeLinecap="round"
+      />
+      <circle cx={cx} cy={cy} r={Math.max(2, length / 40)} fill="currentColor" />
+    </g>
+  );
+}
+
+function CenterLabel({
+  label,
+  cx,
+  cy,
+  size,
+}: {
+  label: CircleCenterLabel;
+  cx: number;
+  cy: number;
+  size: number;
+}) {
+  const primarySize = size * 0.1;
+  const secondarySize = size * 0.045;
+  const halo = (fontSize: number) =>
+    label.haloColor
+      ? { stroke: label.haloColor, strokeWidth: fontSize * 0.3, paintOrder: "stroke" as const }
+      : {};
+  const primaryY = label.secondary ? cy - secondarySize * 0.6 : cy;
+  return (
+    <g data-center-label="true" pointerEvents="none" textAnchor="middle">
+      <text
+        x={cx}
+        y={primaryY}
+        dominantBaseline="central"
+        fontSize={primarySize}
+        fontWeight={600}
+        style={{ fill: label.color, fontVariantNumeric: "tabular-nums", ...halo(primarySize) }}
+      >
+        {label.primary}
+      </text>
+      {label.secondary && (
+        <text
+          x={cx}
+          y={primaryY + primarySize * 0.5 + secondarySize}
+          dominantBaseline="central"
+          fontSize={secondarySize}
+          letterSpacing="0.08em"
+          style={{ fill: label.secondaryColor ?? label.color, ...halo(secondarySize) }}
+        >
+          {label.secondary}
+        </text>
+      )}
+    </g>
   );
 }

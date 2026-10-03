@@ -11,4 +11,4 @@ export type { Slice } from "./Slice";
 export { Circle } from "./Circle";
 export type { CircleProps } from "./Circle";
 export { MultiCircle } from "./MultiCircle";
-export type { MultiCircleProps, RingConfig } from "./MultiCircle";
+export type { MultiCircleProps, RingConfig, CircleHand, CircleCenterLabel } from "./MultiCircle";

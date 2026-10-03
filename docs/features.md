@@ -18,6 +18,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Chronological slice ordering from the top | ✅ | planned | `slicesForView` + `eventSlicesForView` place slices from 12 o'clock. |
 | Interactive slices (tap/click a slice) | ✅ | planned | `onSliceClick` per slice wired through `Circle` and `MultiCircle`; decision documented in Milestone 1.4. |
 | "Unknown" state for unfetched periods | ✅ | planned | `EVENT_COLORS.unknown` fills any range not covered by `fetchedRange`. |
+| Current time on the day circle | ✅ | **new** | Today's day view shows a current-time hand and a centre clock (24-hour time and date); other days show the date. The hand uses the event slices' mapping, so it lines up with events on DST days. `hand` and `centerLabel` on `MultiCircle`. |
 | Time navigation (browse to a specific day/week/month/year) | ✅ | planned | `PeriodNavigator` component with prev/label/next and a Today reset (Milestone 4.1). |
 
 ---

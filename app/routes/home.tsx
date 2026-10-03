@@ -13,6 +13,9 @@ import { isProduction } from "../lib/buildConfig";
 import { getDevFixtureCalendars } from "../lib/devFixture";
 import type { CalendarEvent, CalendarEventData } from "../lib/calendarTimeline";
 import { eventWindow } from "../lib/serverRefreshPolicy";
+import { dayClock } from "../lib/dayClock";
+import { useNow } from "../lib/useNow";
+import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
 import {
   page,
@@ -119,6 +122,11 @@ export default function Home() {
   );
   const noCalendars = activeCalendars.length === 0;
 
+  // Null until the client has mounted, so nothing here depends on the
+  // server's clock or time zone.
+  const now = useNow();
+  const clock = now ? dayClock(view, reference, now) : null;
+
   const rings = [
     ...(showTimeLapse ? slicesForViewOuterRing(view, reference) : []),
     ...eventRingsForCalendars(activeCalendars, view, reference),
@@ -166,7 +174,27 @@ export default function Home() {
           ⚙
         </Link>
       </div>
-      <MultiCircle rings={rings} onSliceClick={handleSliceClick} className={timeline} />
+      <MultiCircle
+        rings={rings}
+        onSliceClick={handleSliceClick}
+        className={timeline}
+        hand={
+          clock?.handDegrees !== undefined
+            ? { degrees: clock.handDegrees, color: vars.color.now }
+            : undefined
+        }
+        centerLabel={
+          clock
+            ? {
+                primary: clock.primary,
+                secondary: clock.secondary,
+                color: vars.color.text,
+                secondaryColor: vars.color.textMuted,
+                haloColor: vars.color.background,
+              }
+            : undefined
+        }
+      />
       <PeriodNavigator view={view} value={reference} onChange={handleReferenceChange} />
       <SegmentedControl value={view} onChange={handleViewChange} />
       <label className={timeLapseToggle}>

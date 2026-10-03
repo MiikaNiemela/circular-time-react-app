@@ -23,6 +23,8 @@ export const vars = createThemeContract({
     danger: null,
     /** Shadow colour for elevated surfaces (cards, overlays). */
     overlayShadow: null,
+    /** Marker for the current time on the timeline. */
+    now: null,
   },
   space: {
     xs: null,
@@ -51,34 +53,35 @@ export const vars = createThemeContract({
 // primitive objects so the raw step values are not duplicated per theme.
 const scaleTokens = { space, fontSize, radius, font };
 
-export const lightTheme = createTheme(vars, {
-  color: {
-    background: palette.white,
-    surface: palette.gray50,
-    text: palette.ink,
-    textMuted: palette.gray500,
-    accent: palette.blue600,
-    accentHover: palette.blue700,
-    border: palette.gray200,
-    onAccent: palette.white,
-    danger: palette.red600,
-    overlayShadow: palette.shadowSoft,
-  },
-  ...scaleTokens,
-});
+/** Light colour roles; exported so contrast can be tested. */
+export const lightColors = {
+  background: palette.white,
+  surface: palette.gray50,
+  text: palette.ink,
+  textMuted: palette.gray500,
+  accent: palette.blue600,
+  accentHover: palette.blue700,
+  border: palette.gray200,
+  onAccent: palette.white,
+  danger: palette.red600,
+  overlayShadow: palette.shadowSoft,
+  now: palette.red600,
+} as const;
 
-export const darkTheme = createTheme(vars, {
-  color: {
-    background: palette.ink,
-    surface: palette.gray900,
-    text: palette.gray50,
-    textMuted: palette.gray400,
-    accent: palette.blue400,
-    accentHover: palette.blue300,
-    border: palette.gray700,
-    onAccent: palette.white,
-    danger: palette.red600,
-    overlayShadow: palette.shadowSoft,
-  },
-  ...scaleTokens,
-});
+/** Dark colour roles; exported so contrast can be tested. */
+export const darkColors = {
+  background: palette.ink,
+  surface: palette.gray900,
+  text: palette.gray50,
+  textMuted: palette.gray400,
+  accent: palette.blue400,
+  accentHover: palette.blue300,
+  border: palette.gray700,
+  onAccent: palette.white,
+  danger: palette.red600,
+  overlayShadow: palette.shadowSoft,
+  now: palette.red600,
+} as const;
+
+export const lightTheme = createTheme(vars, { color: lightColors, ...scaleTokens });
+export const darkTheme = createTheme(vars, { color: darkColors, ...scaleTokens });
