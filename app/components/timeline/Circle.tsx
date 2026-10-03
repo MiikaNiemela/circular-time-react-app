@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { arcPath, MIN_LABEL_DEG, type Slice } from "./Slice";
+import { arcPath, MIN_LABEL_DEG, readableTextColor, type Slice } from "./Slice";
 import { interactiveSlice } from "./interactiveSlice.css";
 
 export interface CircleProps {
@@ -120,7 +120,7 @@ export function Circle({ slices, lineWidth, size = 200, onSliceClick }: CirclePr
           return (
             <g key={i}>
               <path {...sharedProps} d={d!} />
-              <text fontSize={fontSize} fill="white">
+              <text fontSize={fontSize} fill={readableTextColor(slice.color)}>
                 <textPath href={`#${uid}a${i}`} startOffset="50%" textAnchor="middle">
                   {slice.label}
                 </textPath>

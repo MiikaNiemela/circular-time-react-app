@@ -60,7 +60,9 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Settings view | ✅ | carried over | `app/routes/settings.tsx` starts provider calendar connections and controls per-calendar visibility. |
 | Navigation between views | ✅ | carried over | React Router links; `PeriodNavigator` for browsing periods within a view. |
 | Light / dark mode | ✅ | carried over | vanilla-extract theme contract + `DarkModeToggle`. |
-| Responsive layout (mobile → large desktop) | ✅ | **new** | SVG scales to its container; layout adapts across breakpoints. Confirmed in the 4.2 parity pass. |
+| Responsive layout (mobile → large desktop) | ✅ | **new** | `TimelineLayout`: below 1024 px of available width one column (header, view selector and navigator, circle, then the panel sections); from 1024 px the controls join the header row and the panel sits beside the circle. The circle fills its column up to 560 px. The layout uses container queries, so it follows the space it is given. |
+| Calendars legend | ✅ | **new** | `CalendarLegend` names the calendar behind each event ring by ring position (events keep their own colours). |
+| Typography | ✅ | **new** | Self-hosted Hanken Grotesk (UI) and IBM Plex Mono (numerals and times), Latin subset, preloaded, `font-display: optional` so text never shifts on font load. |
 
 ---
 

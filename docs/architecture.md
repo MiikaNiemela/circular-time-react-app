@@ -95,6 +95,10 @@ The job needs the same runtime configuration as the server: `DATABASE_URL`, `TOK
 
 vanilla-extract provides type-safe, zero-runtime CSS, organised as a two-tier token system. Tier-1 *primitives* (`app/styles/primitives.ts`) hold the raw palette and the spacing/typography/radius scales in one place; tier-2 *semantic* tokens (`theme.css.ts`) name them by role (`background`, `text`, `accent`, …), and the light and dark themes alias primitives onto those roles. Components reference semantic tokens only — no raw values inlined. The SVG timeline scales to its container so the same component serves a phone and a wall-sized display.
 
+The timeline screen's layout (`app/components/TimelineLayout.tsx`) responds to the width it is given through CSS container queries (`containerWidths` in `app/styles/breakpoints.ts`), not the window, so its Storybook stories can verify the 390, 768 and 1280 px layouts directly. The DOM order is the reading order at every width. Slice labels on the rings pick black or white text by contrast with the slice colour (`readableTextColor`).
+
+Fonts are self-hosted from npm packages (`app/styles/fonts.ts`): the `@font-face` rules are rendered into the document head and the files are preloaded. `font-display: optional` keeps a late font from being swapped in, so text never shifts; the `font.body` and `font.mono` tokens name the families with system fallbacks.
+
 ## Hosting
 
 The application runs as a Node.js SSR server through `react-router-serve` in a container platform.
