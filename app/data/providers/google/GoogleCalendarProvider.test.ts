@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { GOOGLE_MAX_PAGES, GoogleCalendarProvider } from "./GoogleCalendarProvider";
 
-function jsonResponse(body: unknown, ok = true, status = 200): Response {
-  return { ok, status, headers: new Headers(), json: async () => body } as Response;
+function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500): Response {
+  return new Response(JSON.stringify(body), { status });
 }
 
 const RANGE = {
@@ -181,7 +181,7 @@ describe("GoogleCalendarProvider", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ items: [], nextPageToken: "t2" }))
-      .mockResolvedValue(jsonResponse({}, false, 500));
+      .mockImplementation(async () => jsonResponse({}, false, 500));
     const p = new GoogleCalendarProvider({
       accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,

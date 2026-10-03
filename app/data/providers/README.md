@@ -29,13 +29,25 @@ server decides where a valid token comes from (see
 
 ## Temporary failures
 
-Both providers read through `retryingFetch`. Each request, including each
-result page, gets a 10-second timeout and up to three attempts. Rate limiting
-(429, and Google's 403 `rateLimitExceeded` / `userRateLimitExceeded`), 408,
-5xx gateway and server errors, network failures, and timeouts are retried after
-an exponential backoff with full jitter (0.5 s doubling, at most 5 s). A
-`Retry-After` within that limit is honoured; a longer one ends the retries, and
-the provider reports the status. Only idempotent `GET` reads use this wrapper.
+Both providers read through `retryingFetch`. Rate limiting (429, and Google's
+403 `rateLimitExceeded` / `userRateLimitExceeded`), 408, 5xx gateway and server
+errors, network failures, and timeouts are retried after an exponential backoff
+with full jitter. A `Retry-After` within the longest allowed wait is honoured; a
+longer one ends the retries and the provider reports the status. The timeout of
+an attempt covers reading the whole body, so a stalled body is retried too. A
+caller's abort stops retrying at once, also during a wait. Only idempotent
+`GET` reads use this wrapper.
+
+Each provider instance shares one time budget across all its requests, so a
+whole read is bounded:
+
+| Profile | Used by | Attempts | Per attempt | Longest wait | Budget per read |
+| --- | --- | --- | --- | --- | --- |
+| `INTERACTIVE_RETRY` | Timeline loader | 2 | 4 s | 1 s | 8 s |
+| `BACKGROUND_RETRY` | Background refresh job | 3 | 10 s | 5 s | 120 s per connection |
+
+When the loader's budget runs out, the page is served from the cache and the
+calendar is marked as failed.
 
 ## Configuration
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { retryingFetch, type RetryOptions } from "./retryingFetch";
+import { INTERACTIVE_RETRY, retryingFetch, type RetryOptions } from "./retryingFetch";
 
 const ENDPOINT = "https://provider.example/events";
 
@@ -16,7 +16,7 @@ function fetchReturning(...statuses: number[]) {
 }
 
 function wrap(fetchFn: unknown, options: RetryOptions = {}) {
-  const sleep = vi.fn(async (_ms: number) => {});
+  const sleep = vi.fn(async (_ms: number, _signal: AbortSignal) => {});
   // random() of 1 makes every backoff its upper bound.
   const wrapped = retryingFetch(fetchFn as typeof fetch, { sleep, random: () => 1, ...options });
   return { wrapped, sleep };
@@ -86,7 +86,7 @@ describe("retryingFetch", () => {
 
     await wrapped(ENDPOINT);
 
-    expect(sleep).toHaveBeenCalledWith(25);
+    expect(sleep).toHaveBeenCalledWith(25, expect.anything());
   });
 
   it("waits for Retry-After given in seconds", async () => {
@@ -99,7 +99,7 @@ describe("retryingFetch", () => {
     const res = await wrapped(ENDPOINT);
 
     expect(res.status).toBe(200);
-    expect(sleep).toHaveBeenCalledWith(2000);
+    expect(sleep).toHaveBeenCalledWith(2000, expect.anything());
   });
 
   it("waits for Retry-After given as a date", async () => {
@@ -111,7 +111,7 @@ describe("retryingFetch", () => {
 
     await wrapped(ENDPOINT);
 
-    expect(sleep).toHaveBeenCalledWith(3000);
+    expect(sleep).toHaveBeenCalledWith(3000, expect.anything());
   });
 
   it("falls back to the backoff when Retry-After is unreadable", async () => {
@@ -123,7 +123,7 @@ describe("retryingFetch", () => {
 
     await wrapped(ENDPOINT);
 
-    expect(sleep).toHaveBeenCalledWith(100);
+    expect(sleep).toHaveBeenCalledWith(100, expect.anything());
   });
 
   it("gives up when Retry-After is longer than the maximum delay", async () => {
@@ -199,5 +199,96 @@ describe("retryingFetch", () => {
     await expect(wrapped(ENDPOINT, { signal: controller.signal })).rejects.toThrow();
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("stops when the caller aborts during the wait before a retry", async () => {
+    const controller = new AbortController();
+    const fetchFn = fetchReturning(503, 200);
+    const wrapped = retryingFetch(fetchFn as unknown as typeof fetch, { baseDelayMs: 1_000 });
+
+    const read = wrapped(ENDPOINT, { signal: controller.signal });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(read).rejects.toThrow();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a response whose body stalls past the attempt timeout", async () => {
+    const stalledBody = (_url: string, init?: RequestInit) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason));
+            },
+          }),
+          { status: 200 }
+        )
+      );
+    const fetchFn = vi
+      .fn()
+      .mockImplementationOnce(stalledBody)
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200 }));
+    const { wrapped } = wrap(fetchFn, { timeoutMs: 5 });
+
+    const res = await wrapped(ENDPOINT);
+
+    expect(await res.json()).toEqual({ ok: true });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one budget across every request and stops when it is used up", async () => {
+    let clock = 0;
+    const now = () => new Date(clock);
+    const fetchFn = vi.fn(async () => {
+      clock += 600;
+      return response(503);
+    });
+    const sleep = vi.fn(async (ms: number) => {
+      clock += ms;
+    });
+    const wrapped = retryingFetch(fetchFn as unknown as typeof fetch, {
+      maxAttempts: 10,
+      baseDelayMs: 100,
+      maxDelayMs: 100,
+      budgetMs: 1_000,
+      random: () => 1,
+      sleep,
+      now,
+    });
+
+    const first = await wrapped(ENDPOINT);
+    // Two attempts and one wait fit; a second wait would end past the budget.
+    expect(first.status).toBe(503);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+
+    await expect(wrapped(ENDPOINT)).rejects.toThrow("budget");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("ends an interactive read against a hanging provider within its budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const hang = (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        });
+      const fetchFn = vi.fn(hang);
+      const wrapped = retryingFetch(fetchFn as unknown as typeof fetch, INTERACTIVE_RETRY);
+      const started = Date.now();
+
+      const read = wrapped(ENDPOINT).then(
+        () => "resolved",
+        () => "rejected"
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await read).toBe("rejected");
+      expect(Date.now() - started).toBeLessThanOrEqual(INTERACTIVE_RETRY.budgetMs!);
+      expect(fetchFn).toHaveBeenCalledTimes(INTERACTIVE_RETRY.maxAttempts!);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

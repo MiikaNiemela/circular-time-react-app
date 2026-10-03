@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { OUTLOOK_MAX_PAGES, OutlookCalendarProvider } from "./OutlookCalendarProvider";
 
-function jsonResponse(body: unknown, ok = true, status = 200): Response {
-  return { ok, status, headers: new Headers(), json: async () => body } as Response;
+function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500): Response {
+  return new Response(JSON.stringify(body), { status });
 }
 
 const RANGE = { start: "2026-06-19T00:00:00Z", end: "2026-06-20T00:00:00Z" };
@@ -186,7 +186,7 @@ describe("OutlookCalendarProvider", () => {
           "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=x",
         })
       )
-      .mockResolvedValue(jsonResponse({}, false, 503));
+      .mockImplementation(async () => jsonResponse({}, false, 503));
     const p = new OutlookCalendarProvider({
       accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,

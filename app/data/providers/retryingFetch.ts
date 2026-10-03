@@ -10,6 +10,9 @@
 /** Statuses that signal a temporary condition on the provider's side. */
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
+/** Statuses whose response must not carry a body. */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+
 export interface RetryOptions {
   /** Total tries, including the first. */
   maxAttempts?: number;
@@ -19,11 +22,61 @@ export interface RetryOptions {
   baseDelayMs?: number;
   /** Longest wait between attempts, and the longest `Retry-After` honoured. */
   maxDelayMs?: number;
+  /**
+   * Total time for every request made through the wrapped fetch, counted from
+   * its first request. No attempt or wait runs past it. Unbounded if omitted.
+   */
+  budgetMs?: number;
   /** Marks a response as retryable when its status alone does not. */
   isRetryable?: (res: Response) => Promise<boolean>;
-  sleep?: (ms: number) => Promise<void>;
+  /** Waits `ms`; rejects with the signal's reason as soon as it aborts. */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
   now?: () => Date;
+}
+
+/**
+ * For reads a person is waiting on: fail fast, so the loader can serve the
+ * cache instead. The whole read, every month and page, shares one budget.
+ */
+export const INTERACTIVE_RETRY: RetryOptions = {
+  maxAttempts: 2,
+  timeoutMs: 4_000,
+  maxDelayMs: 1_000,
+  budgetMs: 8_000,
+};
+
+/**
+ * For the background refresh: more patience per request, and a budget that
+ * keeps one struggling connection from using up the job's run time.
+ */
+export const BACKGROUND_RETRY: RetryOptions = {
+  budgetMs: 120_000,
+};
+
+/** A signal that aborts with a `TimeoutError` after `ms`, and its cleanup. */
+function timeoutSignal(ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
+    ms
+  );
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /** Reads `Retry-After`, a number of seconds or an HTTP date, as a wait in ms. */
@@ -36,9 +89,30 @@ function retryAfterMs(res: Response, now: Date): number | null {
 }
 
 /**
- * Wraps `fetchFn` with a per-attempt timeout and retries. A response that is
- * still failing after the last attempt is returned as it is, so the caller
- * reports its status; a network failure or timeout on the last attempt throws.
+ * Sends one attempt and reads its whole body under `signal`, so a body that
+ * stalls fails this attempt instead of the caller's later read.
+ */
+async function attempt(
+  fetchFn: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit | undefined,
+  signal: AbortSignal
+): Promise<Response> {
+  const res = await fetchFn(input, { ...init, signal });
+  const body = NULL_BODY_STATUSES.has(res.status) ? null : await res.arrayBuffer();
+  return new Response(body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  });
+}
+
+/**
+ * Wraps `fetchFn` with a per-attempt timeout, an optional overall budget, and
+ * retries. A response that is still failing when the attempts or the budget
+ * run out is returned as it is, so the caller reports its status; a network
+ * failure or timeout then throws. A caller's abort stops it at once, also
+ * during a wait.
  */
 export function retryingFetch(fetchFn: typeof fetch, options: RetryOptions = {}): typeof fetch {
   const {
@@ -46,43 +120,65 @@ export function retryingFetch(fetchFn: typeof fetch, options: RetryOptions = {})
     timeoutMs = 10_000,
     baseDelayMs = 500,
     maxDelayMs = 5_000,
+    budgetMs,
     isRetryable = async () => false,
-    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sleep = abortableSleep,
     random = Math.random,
     now = () => new Date(),
   } = options;
 
   // Full jitter keeps clients that failed together from retrying together.
-  const backoffMs = (attempt: number) =>
-    random() * Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+  const backoffMs = (n: number) => random() * Math.min(maxDelayMs, baseDelayMs * 2 ** (n - 1));
+
+  let deadline: number | undefined;
+  const remainingMs = () => (deadline === undefined ? Infinity : deadline - now().getTime());
 
   return async (input, init) => {
-    for (let attempt = 1; ; attempt++) {
-      const last = attempt >= maxAttempts;
-      const timeout = AbortSignal.timeout(timeoutMs);
-      const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    if (budgetMs !== undefined) deadline ??= now().getTime() + budgetMs;
+    const callerSignal = init?.signal ?? undefined;
+    const neverAborts = new AbortController().signal;
 
-      let res: Response;
+    for (let n = 1; ; n++) {
+      callerSignal?.throwIfAborted();
+      const remaining = remainingMs();
+      if (remaining <= 0) {
+        throw new DOMException("The retry budget was used up.", "TimeoutError");
+      }
+      const last = n >= maxAttempts;
+
+      const timeout = timeoutSignal(Math.min(timeoutMs, remaining));
+      const signal = callerSignal
+        ? AbortSignal.any([callerSignal, timeout.signal])
+        : timeout.signal;
+      let res: Response | undefined;
+      let failure: unknown;
       try {
-        res = await fetchFn(input, { ...init, signal });
+        res = await attempt(fetchFn, input, init, signal);
       } catch (error: unknown) {
-        // A network failure or timeout; the caller's own abort is not retried.
-        if (last || init?.signal?.aborted) throw error;
-        await sleep(backoffMs(attempt));
-        continue;
+        failure = error;
+      } finally {
+        timeout.clear();
       }
 
-      if (res.ok || last) return res;
-      if (!RETRYABLE_STATUSES.has(res.status) && !(await isRetryable(res))) return res;
+      if (res) {
+        if (res.ok || last) return res;
+        if (!RETRYABLE_STATUSES.has(res.status) && !(await isRetryable(res))) return res;
+      } else if (last || callerSignal?.aborted) {
+        throw failure;
+      }
 
-      const retryAfter = retryAfterMs(res, now());
+      const retryAfter = res ? retryAfterMs(res, now()) : null;
       // The provider asked for a longer wait than we allow; retrying sooner
       // would only fail again.
-      if (retryAfter != null && retryAfter > maxDelayMs) return res;
+      if (res && retryAfter != null && retryAfter > maxDelayMs) return res;
 
-      // Release the connection held by the unread body.
-      await res.body?.cancel().catch(() => undefined);
-      await sleep(retryAfter ?? backoffMs(attempt));
+      const wait = retryAfter ?? backoffMs(n);
+      // No time would be left for another attempt after the wait.
+      if (wait >= remainingMs()) {
+        if (res) return res;
+        throw failure;
+      }
+      await sleep(wait, callerSignal ?? neverAborts);
     }
   };
 }
