@@ -1,4 +1,5 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
+import { retryingFetch, type RetryOptions } from "../retryingFetch";
 
 const EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
@@ -14,6 +15,23 @@ interface GoogleApiEvent {
 interface GoogleApiEventsList {
   items?: GoogleApiEvent[];
   nextPageToken?: string;
+}
+
+interface GoogleApiError {
+  error?: { errors?: Array<{ reason?: string }> };
+}
+
+/** Google reports some rate limiting as a 403 with one of these reasons. */
+const RATE_LIMIT_REASONS = new Set(["rateLimitExceeded", "userRateLimitExceeded"]);
+
+async function isRateLimited(res: Response): Promise<boolean> {
+  if (res.status !== 403) return false;
+  try {
+    const body = (await res.clone().json()) as GoogleApiError;
+    return (body.error?.errors ?? []).some((e) => RATE_LIMIT_REASONS.has(e.reason ?? ""));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -42,6 +60,8 @@ export interface GoogleProviderConfig {
   /** Supplies a valid access token; the server refreshes it when needed. */
   accessToken: () => Promise<string>;
   fetchFn?: typeof fetch;
+  /** Overrides the retry defaults; tests use it to skip real waits. */
+  retry?: RetryOptions;
 }
 
 /**
@@ -58,12 +78,16 @@ export class GoogleCalendarProvider implements CalendarProvider {
   constructor(config: GoogleProviderConfig) {
     this.accessToken = config.accessToken;
     // bind prevents "Illegal invocation" when fetch is called as a method
-    this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
+    this.fetchFn = retryingFetch(config.fetchFn ?? fetch.bind(globalThis), {
+      ...config.retry,
+      isRetryable: isRateLimited,
+    });
   }
 
   /**
    * Returns every event in the range, following `nextPageToken` until the
-   * last page. Throws rather than return a partial list.
+   * last page. Each page is retried on a temporary failure. Throws rather
+   * than return a partial list.
    */
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
     const token = await this.accessToken();

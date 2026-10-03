@@ -1,4 +1,5 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
+import { retryingFetch, type RetryOptions } from "../retryingFetch";
 
 /**
  * Microsoft Graph API endpoint for the user's default calendar view.
@@ -45,6 +46,8 @@ export interface OutlookProviderConfig {
   /** Supplies a valid access token; the server refreshes it when needed. */
   accessToken: () => Promise<string>;
   fetchFn?: typeof fetch;
+  /** Overrides the retry defaults; tests use it to skip real waits. */
+  retry?: RetryOptions;
 }
 
 /**
@@ -61,13 +64,14 @@ export class OutlookCalendarProvider implements CalendarProvider {
   constructor(config: OutlookProviderConfig) {
     this.accessToken = config.accessToken;
     // bind prevents "Illegal invocation" when fetch is called as a method
-    this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
+    this.fetchFn = retryingFetch(config.fetchFn ?? fetch.bind(globalThis), config.retry);
   }
 
   /**
    * Returns every event in the range, following `@odata.nextLink` until the
-   * last page. A next link outside Microsoft Graph is rejected, so the access
-   * token is only sent to Graph. Throws rather than return a partial list.
+   * last page. Each page is retried on a temporary failure. A next link
+   * outside Microsoft Graph is rejected, so the access token is only sent to
+   * Graph. Throws rather than return a partial list.
    */
   async fetchEvents(range: TimeRange): Promise<CalendarEvent[]> {
     const token = await this.accessToken();
