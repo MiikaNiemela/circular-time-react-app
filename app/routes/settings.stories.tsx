@@ -30,6 +30,16 @@ const SignedInSettingsStub = createRoutesStub([
   },
 ]);
 
+/** Settings for an account that can sign in with Google and Microsoft. */
+const TwoIdentitiesSettingsStub = createRoutesStub([
+  { path: "/", Component: HomeStub },
+  {
+    path: "/settings",
+    Component: Settings as never,
+    loader: () => ({ signInProviders: ["google", "outlook"], connectedProviders: [] }),
+  },
+]);
+
 /** Settings for a signed-in account with a server-side Google calendar connection. */
 const GoogleConnectedSettingsStub = createRoutesStub([
   { path: "/", Component: HomeStub },
@@ -113,7 +123,13 @@ export const SignInAccounts: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const list = await canvas.findByRole("list", { name: "Sign-in accounts" });
-    await expect(within(list).getByText("Can sign in to this account")).toBeInTheDocument();
+    await expect(
+      within(list).getByText("Can sign in to this account · the only sign-in account")
+    ).toBeInTheDocument();
+    // The only sign-in account cannot be removed.
+    await expect(
+      within(list).queryByRole("button", { name: /^Remove .* sign-in account$/ })
+    ).not.toBeInTheDocument();
     await expect(
       within(list).getByRole("button", { name: "Link Microsoft (Outlook) account" })
     ).toBeInTheDocument();
@@ -121,5 +137,38 @@ export const SignInAccounts: Story = {
       within(list).queryByRole("button", { name: "Link Google account" })
     ).not.toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  },
+};
+
+/**
+ * An account that can sign in with Google and Microsoft. Each has Remove;
+ * removing Microsoft (the server is stubbed to accept) leaves Google as the
+ * only sign-in account, which then cannot be removed.
+ */
+export const RemoveSignInAccount: Story = {
+  beforeEach: () => {
+    const original = window.fetch;
+    window.fetch = async () => new Response(JSON.stringify({ ok: true }));
+    return () => {
+      window.fetch = original;
+    };
+  },
+  render: () => (
+    <ThemeProvider>
+      <TwoIdentitiesSettingsStub initialEntries={["/settings"]} />
+    </ThemeProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const list = await canvas.findByRole("list", { name: "Sign-in accounts" });
+    await userEvent.click(
+      within(list).getByRole("button", { name: "Remove Microsoft (Outlook) sign-in account" })
+    );
+    await expect(
+      await within(list).findByRole("button", { name: "Link Microsoft (Outlook) account" })
+    ).toBeInTheDocument();
+    await expect(
+      within(list).queryByRole("button", { name: "Remove Google sign-in account" })
+    ).not.toBeInTheDocument();
   },
 };

@@ -13,6 +13,13 @@
  *   this provider; an account links at most one identity per provider.
  */
 export type ProviderAccountLinkResult = "linked" | "conflict" | "provider-already-linked";
+
+/**
+ * `removed`: the identity can no longer sign in to the account.
+ * `last-identity`: refused, because the account would have no way to sign in.
+ * `not-linked`: the account has no identity from that provider.
+ */
+export type SignInIdentityRemovalResult = "removed" | "last-identity" | "not-linked";
 /** Reports whether calendar access was connected without an ownership conflict. */
 export type CalendarConnectionResult = "connected" | "conflict";
 
@@ -77,6 +84,12 @@ export interface UserRepository {
    * credentials and so can be read without its user present.
    */
   listRefreshableCalendarConnections(): Promise<OwnedCalendarConnection[]>;
+  /**
+   * Unlinks one provider's sign-in identity from the account. The account's
+   * last sign-in identity is never removed. Calendar connections, sessions and
+   * cached events are unchanged.
+   */
+  removeSignInIdentity(userId: string, provider: string): Promise<SignInIdentityRemovalResult>;
   /** Returns the provider IDs whose identities can sign in to the application account. */
   getSignInProviders(userId: string): Promise<string[]>;
   /** Returns the provider IDs (e.g. `"google"`, `"outlook"`) with active calendar access. */

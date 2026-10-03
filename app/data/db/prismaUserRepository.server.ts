@@ -184,6 +184,27 @@ export class PrismaUserRepository {
     });
   }
 
+  /**
+   * Unlinks one provider's sign-in identity. The count and the delete run in
+   * one serializable transaction, so two concurrent removals cannot leave the
+   * account without any sign-in identity.
+   */
+  async removeSignInIdentity(
+    userId: string,
+    provider: string
+  ): Promise<"removed" | "last-identity" | "not-linked"> {
+    return this.runSerializable(async (tx) => {
+      const accounts = await tx.providerAccount.findMany({
+        where: { userId },
+        select: { provider: true },
+      });
+      if (!accounts.some((account) => account.provider === provider)) return "not-linked";
+      if (accounts.length <= 1) return "last-identity";
+      await tx.providerAccount.deleteMany({ where: { userId, provider } });
+      return "removed";
+    });
+  }
+
   /** Lists the providers whose identities can sign in to the application account. */
   async getSignInProviders(userId: string): Promise<string[]> {
     const accounts = await this.db.providerAccount.findMany({

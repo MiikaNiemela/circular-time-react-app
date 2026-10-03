@@ -112,7 +112,9 @@ function OAuthStartForm({
 
 export default function Settings({ loaderData }: Partial<Route.ComponentProps> = {}) {
   // Development without a session has no application account to link to.
-  const signInProviders = loaderData?.signInProviders ?? null;
+  const [signInProviders, setSignInProviders] = useState<string[] | null>(
+    loaderData?.signInProviders ?? null
+  );
   const connectedProviders = loaderData?.connectedProviders;
   const [providers, setProviders] = useState<CalendarProvider[]>(() =>
     resolveProviders(connectedProviders ?? [])
@@ -134,6 +136,30 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
         return { ...p, enabled };
       })
     );
+  }
+
+  async function removeSignInIdentity(id: string, name: string) {
+    let response: Response;
+    try {
+      response = await fetch("/auth/sign-in-identity-removal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+    } catch {
+      alert(`Unable to remove the ${name} sign-in account. Try again.`);
+      return;
+    }
+    if (response.status === 409) {
+      alert("This is the account's only sign-in account. Link another one before removing it.");
+      return;
+    }
+    // 404: already gone, so the list should drop it as well.
+    if (!response.ok && response.status !== 404) {
+      alert(`Unable to remove the ${name} sign-in account. Try again.`);
+      return;
+    }
+    setSignInProviders((ps) => (ps ? ps.filter((p) => p !== id) : ps));
   }
 
   async function disconnect(id: string) {
@@ -176,14 +202,31 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
             <ul className={calendarList} aria-label="Sign-in accounts">
               {IDENTITY_PROVIDERS.map((provider) => {
                 const linked = signInProviders.includes(provider.id);
+                const onlyOne = linked && signInProviders.length === 1;
                 return (
                   <li key={provider.id} className={calendarItem}>
                     <div className={calendarInfo}>
                       <p className={calendarName}>{provider.name}</p>
                       <p className={calendarStatus}>
-                        {linked ? "Can sign in to this account" : "Not linked"}
+                        {!linked
+                          ? "Not linked"
+                          : onlyOne
+                            ? "Can sign in to this account · the only sign-in account"
+                            : "Can sign in to this account"}
                       </p>
                     </div>
+                    {linked && !onlyOne && (
+                      <div className={calendarActions}>
+                        <button
+                          type="button"
+                          className={disconnectButton}
+                          aria-label={`Remove ${provider.name} sign-in account`}
+                          onClick={() => removeSignInIdentity(provider.id, provider.name)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
                     {!linked && (
                       <div className={calendarActions}>
                         <OAuthStartForm
