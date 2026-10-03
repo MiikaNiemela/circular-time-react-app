@@ -2,6 +2,7 @@ import { expect, userEvent, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRoutesStub } from "react-router";
 import Home from "./home";
+import { formatLocalDate } from "../lib/localDate";
 import { ThemeProvider } from "../components/ThemeProvider";
 
 // Stub the settings route so the <Link to="/settings"> in the empty-state
@@ -20,7 +21,7 @@ const HomeStub = createRoutesStub([
       serverCalendars: [],
       failedCalendars: [],
       view: "day",
-      ref: new Date().toISOString().slice(0, 10),
+      ref: formatLocalDate(new Date()),
     }),
   },
   { path: "/settings", Component: SettingsStub },

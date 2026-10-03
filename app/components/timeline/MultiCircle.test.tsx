@@ -270,4 +270,59 @@ describe("MultiCircle", () => {
     const { container } = render(<MultiCircle rings={[ring]} />);
     expect(container.querySelector("textPath")).toBeNull();
   });
+
+  describe("hand and centre label", () => {
+    const ring = {
+      slices: [{ color: "red", degrees: 360, visible: true }],
+      lineWidth: 10,
+      size: 200,
+    };
+
+    it("draws the hand from the centre at the given angle", () => {
+      const { container } = render(
+        <MultiCircle rings={[ring]} hand={{ degrees: 90, color: "red" }} />
+      );
+      const line = container.querySelector("[data-hand] line")!;
+      expect(Number(line.getAttribute("x1"))).toBe(100);
+      expect(Number(line.getAttribute("y1"))).toBe(100);
+      // 90° is 3 o'clock: straight right to the outer edge.
+      expect(Number(line.getAttribute("x2"))).toBeCloseTo(200, 6);
+      expect(Number(line.getAttribute("y2"))).toBeCloseTo(100, 6);
+    });
+
+    it("never lets the hand take clicks from the slices", () => {
+      const { container } = render(
+        <MultiCircle rings={[ring]} hand={{ degrees: 0, color: "red" }} />
+      );
+      expect(container.querySelector("[data-hand]")?.getAttribute("pointer-events")).toBe("none");
+    });
+
+    it("renders the centre label above the hand", () => {
+      const { container } = render(
+        <MultiCircle
+          rings={[ring]}
+          hand={{ degrees: 0, color: "red" }}
+          centerLabel={{ primary: "14:20", secondary: "Tue 23 Jun", color: "black" }}
+        />
+      );
+      const texts = [...container.querySelectorAll("[data-center-label] text")].map(
+        (t) => t.textContent
+      );
+      expect(texts).toEqual(["14:20", "Tue 23 Jun"]);
+      const order = [...container.querySelector("svg")!.children].map((c) =>
+        c.hasAttribute("data-hand")
+          ? "hand"
+          : c.hasAttribute("data-center-label")
+            ? "label"
+            : "other"
+      );
+      expect(order.indexOf("label")).toBeGreaterThan(order.indexOf("hand"));
+    });
+
+    it("draws neither when not asked", () => {
+      const { container } = render(<MultiCircle rings={[ring]} />);
+      expect(container.querySelector("[data-hand]")).toBeNull();
+      expect(container.querySelector("[data-center-label]")).toBeNull();
+    });
+  });
 });

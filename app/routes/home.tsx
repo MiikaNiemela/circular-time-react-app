@@ -13,6 +13,10 @@ import { isProduction } from "../lib/buildConfig";
 import { getDevFixtureCalendars } from "../lib/devFixture";
 import type { CalendarEvent, CalendarEventData } from "../lib/calendarTimeline";
 import { eventWindow } from "../lib/serverRefreshPolicy";
+import { dayClock } from "../lib/dayClock";
+import { useNow } from "../lib/useNow";
+import { formatLocalDate, parseLocalDate } from "../lib/localDate";
+import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
 import {
   page,
@@ -61,8 +65,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") ?? "day") as TimeView;
   const refParam = url.searchParams.get("ref");
-  const refDate = refParam ? new Date(refParam) : new Date();
-  const ref = refDate.toISOString().slice(0, 10);
+  const refDate = (refParam && parseLocalDate(refParam)) || new Date();
+  const ref = formatLocalDate(refDate);
 
   if (!userId) {
     if (isProduction()) throw redirect("/sign-in");
@@ -99,9 +103,18 @@ export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const view = (searchParams.get("view") ?? loaderView) as TimeView;
-  // ref falls back to loader default (today) when the URL has no param yet.
-  const refStr = searchParams.get("ref") ?? loaderRef;
-  const reference = useMemo(() => new Date(refStr), [refStr]);
+  // Null until the client has mounted, so nothing here depends on the
+  // server's clock or time zone.
+  const now = useNow();
+  // `ref` is a local calendar day. Without one the view shows the user's
+  // local today, which the server (in UTC) cannot know; until the client has
+  // mounted it uses the loader's day.
+  const refParam = searchParams.get("ref");
+  const refKey =
+    (refParam && parseLocalDate(refParam) && refParam) || (now ? formatLocalDate(now) : loaderRef);
+  // refKey is always a valid date key (an accepted ref, the client's today, or
+  // the loader's formatted day), so no clock is read during render.
+  const reference = useMemo(() => parseLocalDate(refKey)!, [refKey]);
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showTimeLapse, setShowTimeLapse] = useShowTimeLapse();
@@ -118,6 +131,8 @@ export default function Home() {
     [calendars, reference, view]
   );
   const noCalendars = activeCalendars.length === 0;
+
+  const clock = now ? dayClock(view, reference, now) : null;
 
   const rings = [
     ...(showTimeLapse ? slicesForViewOuterRing(view, reference) : []),
@@ -151,7 +166,7 @@ export default function Home() {
   function handleReferenceChange(date: Date) {
     setSearchParams(
       (prev) => {
-        prev.set("ref", date.toISOString().slice(0, 10));
+        prev.set("ref", formatLocalDate(date));
         return prev;
       },
       { replace: true }
@@ -166,8 +181,36 @@ export default function Home() {
           ⚙
         </Link>
       </div>
-      <MultiCircle rings={rings} onSliceClick={handleSliceClick} className={timeline} />
-      <PeriodNavigator view={view} value={reference} onChange={handleReferenceChange} />
+      <MultiCircle
+        rings={rings}
+        onSliceClick={handleSliceClick}
+        className={timeline}
+        hand={
+          clock?.handDegrees !== undefined
+            ? { degrees: clock.handDegrees, color: vars.color.now }
+            : undefined
+        }
+        centerLabel={
+          clock
+            ? {
+                primary: clock.primary,
+                secondary: clock.secondary,
+                color: vars.color.text,
+                secondaryColor: vars.color.textMuted,
+                haloColor: vars.color.background,
+              }
+            : undefined
+        }
+      />
+      <PeriodNavigator
+        view={view}
+        value={reference}
+        onChange={handleReferenceChange}
+        // Before mount, compare against the displayed day itself: the server
+        // and the browser can be on different days, and the Today control
+        // must render the same on both. The real time takes over after mount.
+        now={now ?? reference}
+      />
       <SegmentedControl value={view} onChange={handleViewChange} />
       <label className={timeLapseToggle}>
         <input

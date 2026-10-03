@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
+import { hydrateRoot } from "react-dom/client";
 import { createRoutesStub } from "react-router";
 import Home, { loader, serverReadWindow } from "./home";
 import { eventWindow } from "../lib/serverRefreshPolicy";
@@ -117,6 +119,123 @@ describe("Home route — rendering", () => {
     render(<HomeStub initialEntries={["/"]} />);
     // With the only calendar hidden the timeline falls back to the empty state.
     expect(await screen.findByText(/No calendars connected/i)).toBeTruthy();
+  });
+});
+
+describe("Home route — local day and current time", () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = originalTz;
+  });
+
+  /** Freezes the clock (timers keep running) in the given time zone. */
+  function at(tz: string, instant: string) {
+    process.env.TZ = tz;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(instant));
+  }
+
+  /** Loader data with one empty calendar, so the circle has a ring to draw. */
+  const withRing = (ref = "2026-06-23") => ({
+    ...DEFAULT_LOADER_DATA,
+    ref,
+    serverCalendars: [{ calendarId: "google", events: [], fetchedRange: null }],
+  });
+
+  /** The centre label's lines once the client has mounted. */
+  async function centreLabel() {
+    await screen.findByRole("group", { name: /time view/i });
+    await vi.waitFor(() => {
+      expect(document.querySelector("[data-center-label]")).not.toBeNull();
+    });
+    return [...document.querySelectorAll("[data-center-label] text")].map((t) => t.textContent);
+  }
+
+  it("shows today's hand west of UTC, where the date key is not UTC midnight", async () => {
+    // 14:20 PDT on 23 June is 21:20 UTC the same day.
+    at("America/Los_Angeles", "2026-06-23T21:20:00Z");
+    const HomeStub = makeStub(withRing());
+    render(<HomeStub initialEntries={["/?ref=2026-06-23"]} />);
+
+    expect((await centreLabel())[0]).toBe("14:20");
+    expect(document.querySelector("[data-hand]")).not.toBeNull();
+  });
+
+  it("defaults to the local today after a positive-offset midnight", async () => {
+    // 00:30 on 24 June in Helsinki is still 23 June in UTC, where the loader runs.
+    at("Europe/Helsinki", "2026-06-23T21:30:00Z");
+    const HomeStub = makeStub(withRing());
+    render(<HomeStub initialEntries={["/"]} />);
+
+    expect((await centreLabel())[0]).toBe("00:30");
+    expect(document.querySelector("[data-hand]")).not.toBeNull();
+  });
+
+  it("shows another day's date without a hand", async () => {
+    at("America/Los_Angeles", "2026-06-23T21:20:00Z");
+    const HomeStub = makeStub(withRing());
+    render(<HomeStub initialEntries={["/?ref=2026-06-25"]} />);
+
+    expect((await centreLabel())[0]).toBe("25");
+    expect(document.querySelector("[data-hand]")).toBeNull();
+  });
+
+  it("steps to the next local day", async () => {
+    at("Pacific/Auckland", "2026-06-23T11:00:00Z");
+    const HomeStub = makeStub(withRing());
+    render(<HomeStub initialEntries={["/?ref=2026-06-23"]} />);
+    await centreLabel();
+
+    fireEvent.click(screen.getByRole("button", { name: /next period/i }));
+
+    await vi.waitFor(async () => expect((await centreLabel())[0]).toBe("24"));
+  });
+});
+
+describe("Home route — hydration across a UTC-day boundary", () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = originalTz;
+  });
+
+  it("hydrates a UTC server render in a browser that is already on the next day", async () => {
+    // 22:30 UTC on 3 October is 01:30 on 4 October in Helsinki.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-03T22:30:00Z"));
+    const data = {
+      ...DEFAULT_LOADER_DATA,
+      ref: "2026-10-03",
+      serverCalendars: [{ calendarId: "google", events: [], fetchedRange: null }],
+    };
+    const Stub = createRoutesStub([{ id: "home", path: "/", Component: Home, loader: () => data }]);
+    const app = <Stub initialEntries={["/"]} hydrationData={{ loaderData: { home: data } }} />;
+
+    process.env.TZ = "UTC";
+    const html = renderToString(app);
+
+    process.env.TZ = "Europe/Helsinki";
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const recoverable = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await act(async () => {
+        hydrateRoot(container, app, { onRecoverableError: recoverable });
+      });
+
+      expect(recoverable).not.toHaveBeenCalled();
+      expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/hydrat/i);
+      // After mounting, the browser's own day is shown.
+      await vi.waitFor(() =>
+        expect(container.querySelector("[data-center-label] text")?.textContent).toBe("01:30")
+      );
+    } finally {
+      consoleError.mockRestore();
+      container.remove();
+    }
   });
 });
 

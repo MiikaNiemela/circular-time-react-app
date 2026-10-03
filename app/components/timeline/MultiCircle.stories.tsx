@@ -6,6 +6,8 @@ import { eventRingsForCalendars, type CalendarEvent } from "../../lib/calendarTi
 import { useState } from "react";
 import { ThemeProvider } from "../ThemeProvider";
 import { EventDetail } from "../EventDetail";
+import { dayClock } from "../../lib/dayClock";
+import { darkTheme, lightTheme, vars } from "../../styles/theme.css";
 
 /** Event map used by the interactive demo story — keys match the eventId format. */
 const CLICK_DEMO_EVENTS = new Map<string, CalendarEvent>([
@@ -456,4 +458,110 @@ export const TwoCalendarsWithEventDetail: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Close" }));
     expect(canvas.queryByRole("dialog")).not.toBeInTheDocument();
   },
+};
+
+/** A fixed local day with a few events, for the current-time stories. */
+const CLOCK_DAY = new Date(2026, 5, 23);
+const at = (h: number, m = 0) => new Date(2026, 5, 23, h, m).toISOString();
+const CLOCK_CALENDARS = [
+  {
+    calendarId: "google",
+    fetchedRange: {
+      start: new Date(2026, 5, 23).toISOString(),
+      end: new Date(2026, 5, 24).toISOString(),
+    },
+    events: [
+      {
+        id: "c1",
+        calendarId: "google",
+        title: "Standup",
+        start: at(8, 30),
+        end: at(9),
+        color: "#2563eb",
+      },
+      {
+        id: "c2",
+        calendarId: "google",
+        title: "Deep work",
+        start: at(9),
+        end: at(12),
+        color: "#0d9488",
+      },
+      {
+        id: "c3",
+        calendarId: "google",
+        title: "1:1",
+        start: at(13),
+        end: at(13, 30),
+        color: "#2563eb",
+      },
+      {
+        id: "c4",
+        calendarId: "google",
+        title: "Design review",
+        start: at(15),
+        end: at(16, 30),
+        color: "#7c3aed",
+      },
+    ],
+  },
+];
+
+function CurrentTimePreview({ now, theme }: { now: Date; theme: "light" | "dark" }) {
+  const clock = dayClock("day", CLOCK_DAY, now, "en-GB")!;
+  return (
+    <div
+      className={theme === "dark" ? darkTheme : lightTheme}
+      style={{ background: vars.color.background, padding: 16, width: 360 }}
+    >
+      <MultiCircle
+        rings={[
+          ...slicesForView("day", CLOCK_DAY),
+          ...eventRingsForCalendars(CLOCK_CALENDARS, "day", CLOCK_DAY),
+        ]}
+        hand={
+          clock.handDegrees !== undefined
+            ? { degrees: clock.handDegrees, color: vars.color.now }
+            : undefined
+        }
+        centerLabel={{
+          primary: clock.primary,
+          secondary: clock.secondary,
+          color: vars.color.text,
+          secondaryColor: vars.color.textMuted,
+          haloColor: vars.color.background,
+        }}
+      />
+    </div>
+  );
+}
+
+/** Today: the hand points at 14:20 and the centre shows the time and date. */
+export const CurrentTimeToday: Story = {
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 23, 14, 20)} theme="light" />,
+  play: async ({ canvasElement }) => {
+    const label = within(canvasElement.querySelector<HTMLElement>("[data-center-label]")!);
+    await expect(label.getByText("14:20")).toBeInTheDocument();
+    await expect(canvasElement.querySelector("[data-hand]")).not.toBeNull();
+  },
+};
+
+/** Another day: no hand, and the centre shows the date only. */
+export const CurrentTimeOtherDay: Story = {
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 24, 9)} theme="light" />,
+  play: async ({ canvasElement }) => {
+    const label = within(canvasElement.querySelector<HTMLElement>("[data-center-label]")!);
+    await expect(label.getByText("23")).toBeInTheDocument();
+    await expect(canvasElement.querySelector("[data-hand]")).toBeNull();
+  },
+};
+
+/** Today in the dark theme. */
+export const CurrentTimeTodayDark: Story = {
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 23, 14, 20)} theme="dark" />,
+};
+
+/** Another day in the dark theme. */
+export const CurrentTimeOtherDayDark: Story = {
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 24, 9)} theme="dark" />,
 };
