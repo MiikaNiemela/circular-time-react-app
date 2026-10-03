@@ -20,6 +20,8 @@ import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
 import { SectionPlaceholder, TimelineLayout } from "../components/TimelineLayout";
 import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
+import { DayAgenda } from "../components/DayAgenda";
+import { dayAgenda } from "../lib/dayAgenda";
 import { settingsLink, timeline, emptyState, emptyStateLink, timeLapseToggle } from "./home.css";
 
 export function meta() {
@@ -167,6 +169,23 @@ export default function Home() {
     );
   }
 
+  // The agenda's times and its past and up-next marks depend on the browser's
+  // time zone and clock, so it is built only once the client has mounted.
+  const agenda = useMemo(() => {
+    if (view !== "day" || !now) return null;
+    const day = eventWindow("day", reference);
+    const isToday = day.start === eventWindow("day", now).start;
+    const events = activeCalendars.flatMap((calendar) => calendar.events);
+    return {
+      title: new Intl.DateTimeFormat(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }).format(reference),
+      items: dayAgenda(events, day, isToday ? now : null),
+    };
+  }, [view, now, reference, activeCalendars]);
+
   const legendItems = activeCalendars.map((calendar) => ({
     id: calendar.calendarId,
     label: calendarLabel(calendar.calendarId),
@@ -273,13 +292,23 @@ export default function Home() {
               </>
             ),
           },
-          {
-            id: "agenda",
-            title: "Up next",
-            content: (
-              <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
-            ),
-          },
+          // The agenda lists the shown day. Its content and dated title are
+          // built on the client, so before mount the section is only its slot.
+          ...(view === "day"
+            ? [
+                {
+                  id: "agenda",
+                  title: agenda?.title ?? "Agenda",
+                  content: agenda ? (
+                    <DayAgenda
+                      items={agenda.items}
+                      calendarName={calendarLabel}
+                      onSelect={setSelectedEvent}
+                    />
+                  ) : null,
+                },
+              ]
+            : []),
         ]}
       />
       {selectedEvent && (

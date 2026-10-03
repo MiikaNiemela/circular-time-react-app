@@ -61,6 +61,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⏸ deferred
 | Navigation between views | ✅ | carried over | React Router links; `PeriodNavigator` for browsing periods within a view. |
 | Light / dark mode | ✅ | carried over | vanilla-extract theme contract + `DarkModeToggle`. |
 | Responsive layout (mobile → large desktop) | ✅ | **new** | `TimelineLayout`: below 1024 px of available width one column (header, view selector and navigator, circle, then the panel sections); from 1024 px the controls join the header row and the panel sits beside the circle. The circle fills its column up to 560 px. The layout uses container queries, so it follows the space it is given. |
+| Day agenda | ✅ | **new** | Day view: the day's timed events in order with start time (24 h), slice colour, title and calendar. Today, past events are muted and the next event is marked "Up next"; narrow layouts show only upcoming events until expanded. Events that cross the day's edges show their clamped time and "started earlier" / "ends later". A row opens the same `EventDetail` as its slice. Built on the client only, since it depends on the browser's clock and time zone. |
 | Calendars legend | ✅ | **new** | `CalendarLegend` names the calendar behind each event ring by ring position (events keep their own colours). |
 | Typography | ✅ | **new** | Self-hosted Hanken Grotesk (UI) and IBM Plex Mono (numerals and times), Latin subset, preloaded, `font-display: optional` so text never shifts on font load. |
 
