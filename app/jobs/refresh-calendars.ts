@@ -23,4 +23,12 @@ const code = await runRefreshJob({
   now: () => new Date(),
 });
 await prisma.$disconnect();
+
+// Writes to a pipe are asynchronous, so exiting immediately can cut off the
+// summary line. A write callback runs after every earlier write on that stream
+// has been handled. Exit explicitly afterwards, because open client handles
+// such as gRPC channels could otherwise keep the process alive.
+const flush = (stream: NodeJS.WriteStream) =>
+  new Promise<void>((resolve) => stream.write("", () => resolve()));
+await Promise.all([flush(process.stdout), flush(process.stderr)]);
 process.exit(code);
