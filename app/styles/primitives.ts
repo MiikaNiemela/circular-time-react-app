@@ -31,6 +31,8 @@ export const palette = {
   blue400: "#60a5fa",
   blue300: "#93c5fd",
   amber500: "#f59e0b",
+  amber700: "#b45309",
+  green700: "#15803d",
   red600: "#dc2626",
   /** Translucent black for elevation shadows. */
   shadowSoft: "rgba(0, 0, 0, 0.12)",

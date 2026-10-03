@@ -1,5 +1,6 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
 import { retryingFetch, type RetryOptions } from "../retryingFetch";
+import { outlookAllDayKind } from "../../allDayKind";
 
 /**
  * Microsoft Graph API endpoint for the user's default calendar view.
@@ -12,6 +13,8 @@ interface GraphEvent {
   id: string;
   subject?: string;
   isAllDay?: boolean;
+  /** `free`, `tentative`, `busy`, `oof`, `workingElsewhere` or `unknown`. */
+  showAs?: string;
   start: { dateTime: string; timeZone: string };
   end: { dateTime: string; timeZone: string };
 }
@@ -39,6 +42,7 @@ function mapEvent(api: GraphEvent): CalendarEvent {
     start: new Date(api.start.dateTime + "Z").toISOString(),
     end: new Date(api.end.dateTime + "Z").toISOString(),
     allDay: api.isAllDay ?? false,
+    ...(api.isAllDay ? { kind: outlookAllDayKind(api.showAs) } : {}),
   };
 }
 
@@ -78,7 +82,7 @@ export class OutlookCalendarProvider implements CalendarProvider {
     const first = new URL(EVENTS_ENDPOINT);
     first.searchParams.set("startDateTime", new Date(range.start).toISOString());
     first.searchParams.set("endDateTime", new Date(range.end).toISOString());
-    first.searchParams.set("$select", "id,subject,isAllDay,start,end");
+    first.searchParams.set("$select", "id,subject,isAllDay,showAs,start,end");
     first.searchParams.set("$top", "1000");
     first.searchParams.set("$orderby", "start/dateTime");
 

@@ -223,6 +223,30 @@ describe("Home route — local day and current time", () => {
     expect(screen.getByRole("dialog", { name: "Design review" })).toBeTruthy();
   });
 
+  it("shows the day's all-day events on the arch and as chips, not on the ring", async () => {
+    at("Europe/Helsinki", "2026-06-23T11:20:00Z");
+    const birthday = {
+      id: "b1",
+      calendarId: "google",
+      title: "Mara's birthday",
+      start: "2026-06-23T00:00:00.000Z",
+      end: "2026-06-24T00:00:00.000Z",
+      allDay: true,
+      kind: "birthday" as const,
+    };
+    const HomeStub = makeStub({
+      ...withRing(),
+      serverCalendars: [{ calendarId: "google", events: [birthday], fetchedRange: null }],
+    });
+    render(<HomeStub initialEntries={["/?ref=2026-06-23"]} />);
+
+    const arch = await screen.findByRole("img", { name: /All day: Mara's birthday \(birthday\)/ });
+    expect(arch).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Ring 1 segment/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mara's birthday (birthday)" }));
+    expect(screen.getByRole("dialog", { name: "Mara's birthday" })).toBeTruthy();
+  });
+
   it("steps to the next local day", async () => {
     at("Pacific/Auckland", "2026-06-23T11:00:00Z");
     const HomeStub = makeStub(withRing());

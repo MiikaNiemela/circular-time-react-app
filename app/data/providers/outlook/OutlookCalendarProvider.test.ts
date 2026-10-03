@@ -67,6 +67,41 @@ describe("OutlookCalendarProvider", () => {
     });
     const [evt] = await p.fetchEvents(RANGE);
     expect(evt.allDay).toBe(true);
+    expect(evt.kind).toBe("other");
+  });
+
+  it("classifies all-day time off from showAs and requests the field", async () => {
+    const fetchFn = vi.fn(async (_url: string) =>
+      jsonResponse({
+        value: [
+          {
+            id: "e3",
+            subject: "Annual leave",
+            isAllDay: true,
+            showAs: "oof",
+            start: { dateTime: "2026-06-19T00:00:00", timeZone: "UTC" },
+            end: { dateTime: "2026-06-20T00:00:00", timeZone: "UTC" },
+          },
+          {
+            id: "e4",
+            subject: "Out, but timed",
+            isAllDay: false,
+            showAs: "oof",
+            start: { dateTime: "2026-06-19T09:00:00", timeZone: "UTC" },
+            end: { dateTime: "2026-06-19T10:00:00", timeZone: "UTC" },
+          },
+        ],
+      })
+    );
+    const p = new OutlookCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    const [leave, timed] = await p.fetchEvents(RANGE);
+    expect(leave.kind).toBe("time-off");
+    expect(timed).not.toHaveProperty("kind");
+    const select = new URL(String(fetchFn.mock.calls[0][0])).searchParams.get("$select");
+    expect(select?.split(",")).toContain("showAs");
   });
 
   it("titles untitled events", async () => {

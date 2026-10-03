@@ -7,7 +7,7 @@ import { PeriodNavigator } from "./PeriodNavigator";
 import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
 import { slicesForView } from "../lib/timeSlices";
-import { timeline } from "../routes/home.css";
+import { circleFrame, timeline } from "../routes/home.css";
 import { vars } from "../styles/theme.css";
 
 const DAY = new Date(2026, 5, 23);
@@ -27,12 +27,14 @@ function LayoutAt({ width }: { width: number }) {
             </>
           }
           circle={
-            <MultiCircle
-              rings={slicesForView("day", DAY)}
-              labelFontFamily={vars.font.mono}
-              className={timeline}
-              hand={{ degrees: 215, color: "#dc2626" }}
-            />
+            <div className={circleFrame}>
+              <MultiCircle
+                rings={slicesForView("day", DAY)}
+                labelFontFamily={vars.font.mono}
+                className={timeline}
+                hand={{ degrees: 215, color: "#dc2626" }}
+              />
+            </div>
           }
           sections={[
             {

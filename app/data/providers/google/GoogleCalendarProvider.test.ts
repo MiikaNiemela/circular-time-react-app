@@ -76,6 +76,45 @@ describe("GoogleCalendarProvider", () => {
     const [evt] = await p.fetchEvents(RANGE);
     expect(evt.allDay).toBe(true);
     expect(evt.title).toBe("Holiday");
+    expect(evt.kind).toBe("other");
+  });
+
+  it("classifies all-day birthdays and time off from eventType", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({
+        items: [
+          {
+            id: "b",
+            summary: "Mara's birthday",
+            eventType: "birthday",
+            start: { date: "2026-06-19" },
+            end: { date: "2026-06-20" },
+          },
+          {
+            id: "o",
+            summary: "Annual leave",
+            eventType: "outOfOffice",
+            start: { date: "2026-06-19" },
+            end: { date: "2026-06-20" },
+          },
+          {
+            id: "t",
+            summary: "Out, but timed",
+            eventType: "outOfOffice",
+            start: { dateTime: "2026-06-19T09:00:00Z" },
+            end: { dateTime: "2026-06-19T10:00:00Z" },
+          },
+        ],
+      })
+    );
+    const p = new GoogleCalendarProvider({
+      accessToken: token(),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    const [birthday, leave, timed] = await p.fetchEvents(RANGE);
+    expect(birthday.kind).toBe("birthday");
+    expect(leave.kind).toBe("time-off");
+    expect(timed).not.toHaveProperty("kind");
   });
 
   it("titles untitled events", async () => {

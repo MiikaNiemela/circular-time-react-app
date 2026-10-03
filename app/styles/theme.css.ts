@@ -25,6 +25,10 @@ export const vars = createThemeContract({
     overlayShadow: null,
     /** Marker for the current time on the timeline. */
     now: null,
+    /** All-day kinds: icon outline and glyph colours. */
+    allDayBirthday: null,
+    allDayTimeOff: null,
+    allDayOther: null,
   },
   space: {
     xs: null,
@@ -67,6 +71,9 @@ export const lightColors = {
   danger: palette.red600,
   overlayShadow: palette.shadowSoft,
   now: palette.red600,
+  allDayBirthday: palette.amber700,
+  allDayTimeOff: palette.green700,
+  allDayOther: palette.blue600,
 } as const;
 
 /** Dark colour roles; exported so contrast can be tested. */
@@ -82,6 +89,9 @@ export const darkColors = {
   danger: palette.red600,
   overlayShadow: palette.shadowSoft,
   now: palette.red600,
+  allDayBirthday: palette.amber500,
+  allDayTimeOff: palette.green700,
+  allDayOther: palette.blue400,
 } as const;
 
 export const lightTheme = createTheme(vars, { color: lightColors, ...scaleTokens });

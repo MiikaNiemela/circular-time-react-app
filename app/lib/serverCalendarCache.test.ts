@@ -66,6 +66,51 @@ describe("ServerCalendarCache", () => {
     expect(providerFetchEvents).not.toHaveBeenCalled();
   });
 
+  it("refetches a fresh month stored before all-day events had a kind", async () => {
+    const legacyAllDay = {
+      id: "b1",
+      calendarId: "google",
+      title: "Mara's birthday",
+      start: "2026-01-10T00:00:00.000Z",
+      end: "2026-01-11T00:00:00.000Z",
+      allDay: true,
+    };
+    cacheGet.mockResolvedValue({
+      calendarId: "google",
+      range: WINDOW,
+      events: [legacyAllDay],
+      fetchedAt: "2026-01-15T00:00:00Z",
+    });
+    const classified = { ...legacyAllDay, kind: "birthday" as const };
+    providerFetchEvents.mockResolvedValue([classified]);
+
+    const result = await wrapper.fetchEvents(RANGE);
+
+    expect(providerFetchEvents).toHaveBeenCalledWith(WINDOW);
+    expect(result).toEqual([classified]);
+  });
+
+  it("serves a fresh month whose all-day events already have a kind", async () => {
+    cacheGet.mockResolvedValue({
+      calendarId: "google",
+      range: WINDOW,
+      events: [
+        {
+          id: "b1",
+          calendarId: "google",
+          title: "Leave",
+          start: "2026-01-10T00:00:00.000Z",
+          end: "2026-01-11T00:00:00.000Z",
+          allDay: true,
+          kind: "time-off",
+        },
+      ],
+      fetchedAt: "2026-01-15T00:00:00Z",
+    });
+    await wrapper.fetchEvents(RANGE);
+    expect(providerFetchEvents).not.toHaveBeenCalled();
+  });
+
   it("calls provider and caches result on a cache miss", async () => {
     cacheGet.mockResolvedValue(null);
     providerFetchEvents.mockResolvedValue(EVENTS);

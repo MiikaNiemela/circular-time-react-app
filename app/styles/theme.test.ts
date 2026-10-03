@@ -81,4 +81,11 @@ describe.each([
   it("the now marker reaches the 3:1 non-text contrast on the background", () => {
     expect(contrast(colors.now, colors.background)).toBeGreaterThanOrEqual(3);
   });
+
+  it.each(["allDayBirthday", "allDayTimeOff", "allDayOther"] as const)(
+    "the %s icon reaches the 3:1 non-text contrast on the background",
+    (role) => {
+      expect(contrast(colors[role], colors.background)).toBeGreaterThanOrEqual(3);
+    }
+  );
 });

@@ -15,6 +15,16 @@ import {
 } from "./serverRefreshPolicy";
 
 /**
+ * True when a cached month was stored before all-day events carried a kind.
+ * Such a month is refetched once, so past birthdays and time off are
+ * classified too; months the policy never refreshes would otherwise keep
+ * showing them as `other`.
+ */
+export function lacksAllDayKinds(events: CalendarEvent[]): boolean {
+  return events.some((e) => e.allDay && e.kind === undefined);
+}
+
+/**
  * Wraps a `CalendarProvider` with an incremental server-side cache-aside policy.
  * The requested range is covered by whole UTC calendar months, so every view
  * shares the same cache keys. Each month is served from cache when fresh, or
@@ -50,7 +60,11 @@ export class ServerCalendarCache implements CalendarProvider {
 
     for (const window of monthlyWindowsCovering(range)) {
       const cached = await this.cache.get(this.userId, this.provider.id, window);
-      if (cached && !shouldRefresh(window, cached.fetchedAt, this.now())) {
+      if (
+        cached &&
+        !shouldRefresh(window, cached.fetchedAt, this.now()) &&
+        !lacksAllDayKinds(cached.events)
+      ) {
         windows.push({ ...cached, range: window, fromCache: true });
       } else {
         windows.push({ ...(await this.fetchAndStore(window)), fromCache: false });
