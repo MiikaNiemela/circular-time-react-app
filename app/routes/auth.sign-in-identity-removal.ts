@@ -1,6 +1,7 @@
 import type { Route } from "./+types/auth.sign-in-identity-removal";
 import { getUserId } from "../lib/session.server";
 import { userRepository } from "../lib/userRepository.server";
+import { readProviderBody } from "../lib/providerRequest.server";
 
 /**
  * Authenticated resource route that unlinks one provider's sign-in identity
@@ -14,17 +15,8 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { provider?: string };
-  try {
-    body = (await request.json()) as { provider?: string };
-  } catch {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
-  }
-
-  const { provider } = body;
-  if (provider !== "google" && provider !== "outlook") {
-    return Response.json({ error: "Unknown provider" }, { status: 400 });
-  }
+  const provider = await readProviderBody(request);
+  if (provider instanceof Response) return provider;
 
   let result;
   try {

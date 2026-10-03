@@ -41,6 +41,8 @@ describe("POST /auth/sign-in-identity-removal", () => {
 
   it("rejects a malformed body and an unknown provider", async () => {
     expect((await post(null, "{not json")).status).toBe(400);
+    expect((await post(null, "null")).status).toBe(400);
+    expect((await post(null, "[]")).status).toBe(400);
     expect((await post({ provider: "apple" })).status).toBe(400);
     expect(mocks.removeSignInIdentity).not.toHaveBeenCalled();
   });
