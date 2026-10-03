@@ -35,16 +35,19 @@ describe("retryingFetch", () => {
     expect(fetchFn.mock.calls[0][1]?.headers).toEqual({ Authorization: "Bearer at" });
   });
 
-  it.each([408, 429, 500, 502, 503, 504])("retries a %i and returns the recovery", async (status) => {
-    const fetchFn = fetchReturning(status, 200);
-    const { wrapped, sleep } = wrap(fetchFn);
+  it.each([408, 429, 500, 502, 503, 504])(
+    "retries a %i and returns the recovery",
+    async (status) => {
+      const fetchFn = fetchReturning(status, 200);
+      const { wrapped, sleep } = wrap(fetchFn);
 
-    const res = await wrapped(ENDPOINT);
+      const res = await wrapped(ENDPOINT);
 
-    expect(res.status).toBe(200);
-    expect(fetchFn).toHaveBeenCalledTimes(2);
-    expect(sleep).toHaveBeenCalledTimes(1);
-  });
+      expect(res.status).toBe(200);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(sleep).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it.each([400, 401, 403, 404])("does not retry a %i", async (status) => {
     const fetchFn = fetchReturning(status);

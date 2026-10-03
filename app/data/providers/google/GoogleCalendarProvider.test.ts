@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { GOOGLE_MAX_PAGES, GoogleCalendarProvider } from "./GoogleCalendarProvider";
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
-  return { ok, status, json: async () => body } as Response;
+  return { ok, status, headers: new Headers(), json: async () => body } as Response;
 }
 
 const RANGE = {
@@ -181,13 +181,16 @@ describe("GoogleCalendarProvider", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ items: [], nextPageToken: "t2" }))
-      .mockResolvedValueOnce(jsonResponse({}, false, 500));
+      .mockResolvedValue(jsonResponse({}, false, 500));
     const p = new GoogleCalendarProvider({
       accessToken: token(),
       fetchFn: fetchFn as unknown as typeof fetch,
+      retry: { sleep: async () => undefined },
     });
 
     await expect(p.fetchEvents(RANGE)).rejects.toThrow(/fetch failed: 500/);
+    // The first page, then the failing page on each of its three attempts.
+    expect(fetchFn).toHaveBeenCalledTimes(4);
   });
 
   it("fails when the result needs more pages than the limit", async () => {

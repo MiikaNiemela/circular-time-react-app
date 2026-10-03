@@ -27,6 +27,16 @@ Providers take an `accessToken()` supplier instead of holding tokens, so the
 server decides where a valid token comes from (see
 `app/lib/calendarCredentials.ts`).
 
+## Temporary failures
+
+Both providers read through `retryingFetch`. Each request, including each
+result page, gets a 10-second timeout and up to three attempts. Rate limiting
+(429, and Google's 403 `rateLimitExceeded` / `userRateLimitExceeded`), 408,
+5xx gateway and server errors, network failures, and timeouts are retried after
+an exponential backoff with full jitter (0.5 s doubling, at most 5 s). A
+`Retry-After` within that limit is honoured; a longer one ends the retries, and
+the provider reports the status. Only idempotent `GET` reads use this wrapper.
+
 ## Configuration
 
 - `VITE_GOOGLE_CLIENT_ID`, `VITE_OUTLOOK_CLIENT_ID` — public client IDs, build
