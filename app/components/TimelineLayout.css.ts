@@ -124,3 +124,14 @@ export const sectionTitle = style({
   textTransform: "uppercase",
   color: vars.color.textMuted,
 });
+
+export const wideOnlySection = style({
+  display: "none",
+  "@container": { [containerWidths.lg]: { display: "flex" } },
+});
+
+export const placeholder = style({
+  margin: 0,
+  color: vars.color.textMuted,
+  fontSize: vars.fontSize.sm,
+});

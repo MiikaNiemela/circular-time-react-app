@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { TimelineLayout } from "./TimelineLayout";
+import { TimelineLayout, type PanelSection } from "./TimelineLayout";
 
-function renderLayout(sections = [{ id: "a", title: "Calendars", content: <p>legend</p> }]) {
+function renderLayout(
+  sections: PanelSection[] = [{ id: "a", title: "Calendars", content: <p>legend</p> }]
+) {
   return render(
     <TimelineLayout
       brand={<span>Circular Time</span>}
@@ -47,5 +49,15 @@ describe("TimelineLayout", () => {
   it("leaves out the panel when there are no sections", () => {
     const { container } = renderLayout([]);
     expect(container.querySelector('[data-layout="panel"]')).toBeNull();
+  });
+
+  it("marks wide-only sections so narrow layouts can hide them", () => {
+    const { container } = renderLayout([
+      { id: "all-day", title: "All day", content: <p />, wideOnly: true },
+      { id: "calendars", title: "Calendars", content: <p /> },
+    ]);
+    const [allDay, calendars] = container.querySelectorAll("[data-section]");
+    expect(allDay.className).toMatch(/wideOnly/);
+    expect(calendars.className).not.toMatch(/wideOnly/);
   });
 });

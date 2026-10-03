@@ -11,6 +11,8 @@ import {
   panel,
   section,
   sectionTitle,
+  wideOnlySection,
+  placeholder,
 } from "./TimelineLayout.css";
 
 /** One titled block in the side panel. */
@@ -19,6 +21,8 @@ export interface PanelSection {
   id: string;
   title: string;
   content: ReactNode;
+  /** Shown only in the wide (two-column) layout. */
+  wideOnly?: boolean;
 }
 
 export interface TimelineLayoutProps {
@@ -68,7 +72,12 @@ export function TimelineLayout({
           {sections.length > 0 && (
             <div className={panel} data-layout="panel">
               {sections.map((s) => (
-                <section key={s.id} className={section} aria-labelledby={`section-${s.id}`}>
+                <section
+                  key={s.id}
+                  className={s.wideOnly ? `${section} ${wideOnlySection}` : section}
+                  aria-labelledby={`section-${s.id}`}
+                  data-section={s.id}
+                >
                   <h2 id={`section-${s.id}`} className={sectionTitle}>
                     {s.title}
                   </h2>
@@ -81,4 +90,9 @@ export function TimelineLayout({
       </div>
     </div>
   );
+}
+
+/** Stand-in content for a panel section whose feature is not built yet. */
+export function SectionPlaceholder({ children }: { children: ReactNode }) {
+  return <p className={placeholder}>{children}</p>;
 }

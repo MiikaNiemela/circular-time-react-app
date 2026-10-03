@@ -43,7 +43,8 @@ export const label = style({
   minWidth: "11ch",
   textAlign: "center",
   fontSize: vars.fontSize.md,
-  fontFamily: vars.font.body,
+  // Dates are numerals, which use the mono face.
+  fontFamily: vars.font.mono,
   color: vars.color.text,
   fontVariantNumeric: "tabular-nums",
 });

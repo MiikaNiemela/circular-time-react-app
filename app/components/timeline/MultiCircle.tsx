@@ -58,6 +58,8 @@ export interface MultiCircleProps {
    * square `viewBox` lets it scale to any width while keeping its 1:1 ratio).
    */
   className?: string;
+  /** CSS font family of the slice labels (e.g. hour numbers); inherited when omitted. */
+  labelFontFamily?: string;
   /** Optional hand drawn over the rings. It never intercepts clicks. */
   hand?: CircleHand;
   /** Optional text in the centre, drawn above the hand. */
@@ -95,6 +97,7 @@ export function MultiCircle({
   className,
   hand,
   centerLabel,
+  labelFontFamily,
 }: MultiCircleProps) {
   const uid = useId();
 
@@ -203,7 +206,11 @@ export function MultiCircle({
               return (
                 <g key={key}>
                   <path {...sharedProps} d={d!} />
-                  <text fontSize={fontSize} fill={readableTextColor(slice.color)}>
+                  <text
+                    fontSize={fontSize}
+                    fill={readableTextColor(slice.color)}
+                    style={labelFontFamily ? { fontFamily: labelFontFamily } : undefined}
+                  >
                     <textPath href={`#${labelId}`} startOffset="50%" textAnchor="middle">
                       {slice.label}
                     </textPath>

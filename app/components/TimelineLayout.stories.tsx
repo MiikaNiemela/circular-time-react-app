@@ -1,6 +1,6 @@
 import { expect } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { TimelineLayout } from "./TimelineLayout";
+import { SectionPlaceholder, TimelineLayout } from "./TimelineLayout";
 import { CalendarLegend } from "./CalendarLegend";
 import { SegmentedControl } from "./SegmentedControl";
 import { PeriodNavigator } from "./PeriodNavigator";
@@ -8,12 +8,9 @@ import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
 import { slicesForView } from "../lib/timeSlices";
 import { timeline } from "../routes/home.css";
+import { vars } from "../styles/theme.css";
 
 const DAY = new Date(2026, 5, 23);
-
-function Placeholder({ text }: { text: string }) {
-  return <p style={{ margin: 0, opacity: 0.6 }}>{text}</p>;
-}
 
 /** The full layout inside a box of the given width. */
 function LayoutAt({ width }: { width: number }) {
@@ -32,6 +29,7 @@ function LayoutAt({ width }: { width: number }) {
           circle={
             <MultiCircle
               rings={slicesForView("day", DAY)}
+              labelFontFamily={vars.font.mono}
               className={timeline}
               hand={{ degrees: 215, color: "#dc2626" }}
             />
@@ -40,7 +38,8 @@ function LayoutAt({ width }: { width: number }) {
             {
               id: "all-day",
               title: "All day",
-              content: <Placeholder text="All-day events (M13.2)" />,
+              wideOnly: true,
+              content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
             },
             {
               id: "calendars",
@@ -56,8 +55,10 @@ function LayoutAt({ width }: { width: number }) {
             },
             {
               id: "agenda",
-              title: "Tuesday, June 23",
-              content: <Placeholder text="Agenda (M13.3)" />,
+              title: "Up next",
+              content: (
+                <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
+              ),
             },
           ]}
         />
@@ -80,7 +81,7 @@ const part = (root: HTMLElement, name: string) =>
   root.querySelector<HTMLElement>(`[data-layout="${name}"]`)!;
 
 /** Checks the layout: column count, visual order, and no horizontal overflow. */
-async function checkLayout(root: HTMLElement, columns: 1 | 2) {
+async function checkLayout(root: HTMLElement, columns: 1 | 2, sections: string[]) {
   const body = part(root, "body");
   const frame = root.querySelector<HTMLElement>('[data-testid="frame"]')!;
   const brand = box(part(root, "brand"));
@@ -100,6 +101,12 @@ async function checkLayout(root: HTMLElement, columns: 1 | 2) {
     await expect(panel.left).toBeGreaterThanOrEqual(circle.right);
     await expect(Math.abs(panel.top - circle.top)).toBeLessThan(1);
   }
+  // The sections that are shown, top to bottom.
+  const shown = [...root.querySelectorAll<HTMLElement>("[data-section]")]
+    .filter((el) => getComputedStyle(el).display !== "none")
+    .sort((a, b) => box(a).top - box(b).top)
+    .map((el) => el.dataset.section);
+  await expect(shown).toEqual(sections);
   await expect(frame.scrollWidth).toBeLessThanOrEqual(frame.clientWidth);
   const svg = part(root, "circle").querySelector("svg")!;
   await expect(box(svg).width).toBeLessThanOrEqual(560);
@@ -108,17 +115,32 @@ async function checkLayout(root: HTMLElement, columns: 1 | 2) {
 /** Phone (390 px): one column in reading order. */
 export const Mobile390: Story = {
   args: { width: 390 },
-  play: async ({ canvasElement }) => checkLayout(canvasElement, 1),
+  play: async ({ canvasElement }) => checkLayout(canvasElement, 1, ["calendars", "agenda"]),
 };
 
 /** Tablet (768 px): still one column; the circle is capped at 560 px and centred. */
 export const Tablet768: Story = {
   args: { width: 768 },
-  play: async ({ canvasElement }) => checkLayout(canvasElement, 1),
+  play: async ({ canvasElement }) => checkLayout(canvasElement, 1, ["calendars", "agenda"]),
 };
 
 /** Desktop (1280 px): header row, circle left, panel right. */
 export const Desktop1280: Story = {
   args: { width: 1280 },
-  play: async ({ canvasElement }) => checkLayout(canvasElement, 2),
+  play: async ({ canvasElement }) =>
+    checkLayout(canvasElement, 2, ["all-day", "calendars", "agenda"]),
+};
+
+/** Times and numerals use the mono face; prose uses the UI face. */
+export const Typography: Story = {
+  args: { width: 1280 },
+  play: async ({ canvasElement }) => {
+    const family = (el: Element) => getComputedStyle(el).fontFamily;
+    const navigatorDate = canvasElement.querySelector('[aria-label="Navigate periods"] span')!;
+    const hourLabel = canvasElement.querySelector("svg textPath")!.closest("text")!;
+    const prose = canvasElement.querySelector("[data-section] p")!;
+    await expect(family(navigatorDate)).toMatch(/^"IBM Plex Mono"/);
+    await expect(family(hourLabel)).toMatch(/^"IBM Plex Mono"/);
+    await expect(family(prose)).toMatch(/^"Hanken Grotesk"/);
+  },
 };

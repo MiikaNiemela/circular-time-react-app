@@ -18,7 +18,7 @@ import { useNow } from "../lib/useNow";
 import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
-import { TimelineLayout } from "../components/TimelineLayout";
+import { SectionPlaceholder, TimelineLayout } from "../components/TimelineLayout";
 import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
 import { settingsLink, timeline, emptyState, emptyStateLink, timeLapseToggle } from "./home.css";
 
@@ -209,6 +209,7 @@ export default function Home() {
               rings={rings}
               onSliceClick={handleSliceClick}
               className={timeline}
+              labelFontFamily={vars.font.mono}
               hand={
                 clock?.handDegrees !== undefined
                   ? { degrees: clock.handDegrees, color: vars.color.now }
@@ -248,6 +249,14 @@ export default function Home() {
         }
         sections={[
           {
+            // All-day icons sit on the circle's arch on narrow layouts; the
+            // list is a wide-layout addition (M13.2).
+            id: "all-day",
+            title: "All day",
+            wideOnly: true,
+            content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
+          },
+          {
             id: "calendars",
             title: "Calendars",
             content: (
@@ -262,6 +271,13 @@ export default function Home() {
                   show time lapse
                 </label>
               </>
+            ),
+          },
+          {
+            id: "agenda",
+            title: "Up next",
+            content: (
+              <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
             ),
           },
         ]}
