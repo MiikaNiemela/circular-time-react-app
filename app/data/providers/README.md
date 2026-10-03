@@ -41,10 +41,10 @@ caller's abort stops retrying at once, also during a wait. Only idempotent
 Each provider instance shares one time budget across all its requests, so a
 whole read is bounded:
 
-| Profile | Used by | Attempts | Per attempt | Longest wait | Budget per read |
-| --- | --- | --- | --- | --- | --- |
-| `INTERACTIVE_RETRY` | Timeline loader | 2 | 4 s | 1 s | 8 s |
-| `BACKGROUND_RETRY` | Background refresh job | 3 | 10 s | 5 s | 120 s per connection |
+| Profile             | Used by                | Attempts | Per attempt | Longest wait | Budget per read      |
+| ------------------- | ---------------------- | -------- | ----------- | ------------ | -------------------- |
+| `INTERACTIVE_RETRY` | Timeline loader        | 2        | 4 s         | 1 s          | 8 s                  |
+| `BACKGROUND_RETRY`  | Background refresh job | 3        | 10 s        | 5 s          | 120 s per connection |
 
 When the loader's budget runs out, the page is served from the cache and the
 calendar is marked as failed.
