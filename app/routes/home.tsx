@@ -112,7 +112,9 @@ export default function Home() {
   const refParam = searchParams.get("ref");
   const refKey =
     (refParam && parseLocalDate(refParam) && refParam) || (now ? formatLocalDate(now) : loaderRef);
-  const reference = useMemo(() => parseLocalDate(refKey) ?? new Date(), [refKey]);
+  // refKey is always a valid date key (an accepted ref, the client's today, or
+  // the loader's formatted day), so no clock is read during render.
+  const reference = useMemo(() => parseLocalDate(refKey)!, [refKey]);
 
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showTimeLapse, setShowTimeLapse] = useShowTimeLapse();
@@ -204,7 +206,10 @@ export default function Home() {
         view={view}
         value={reference}
         onChange={handleReferenceChange}
-        now={now ?? undefined}
+        // Before mount, compare against the displayed day itself: the server
+        // and the browser can be on different days, and the Today control
+        // must render the same on both. The real time takes over after mount.
+        now={now ?? reference}
       />
       <SegmentedControl value={view} onChange={handleViewChange} />
       <label className={timeLapseToggle}>

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
+import { hydrateRoot } from "react-dom/client";
 import { createRoutesStub } from "react-router";
 import Home, { loader, serverReadWindow } from "./home";
 import { eventWindow } from "../lib/serverRefreshPolicy";
@@ -188,6 +190,52 @@ describe("Home route — local day and current time", () => {
     fireEvent.click(screen.getByRole("button", { name: /next period/i }));
 
     await vi.waitFor(async () => expect((await centreLabel())[0]).toBe("24"));
+  });
+});
+
+describe("Home route — hydration across a UTC-day boundary", () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = originalTz;
+  });
+
+  it("hydrates a UTC server render in a browser that is already on the next day", async () => {
+    // 22:30 UTC on 3 October is 01:30 on 4 October in Helsinki.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-03T22:30:00Z"));
+    const data = {
+      ...DEFAULT_LOADER_DATA,
+      ref: "2026-10-03",
+      serverCalendars: [{ calendarId: "google", events: [], fetchedRange: null }],
+    };
+    const Stub = createRoutesStub([{ id: "home", path: "/", Component: Home, loader: () => data }]);
+    const app = <Stub initialEntries={["/"]} hydrationData={{ loaderData: { home: data } }} />;
+
+    process.env.TZ = "UTC";
+    const html = renderToString(app);
+
+    process.env.TZ = "Europe/Helsinki";
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const recoverable = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await act(async () => {
+        hydrateRoot(container, app, { onRecoverableError: recoverable });
+      });
+
+      expect(recoverable).not.toHaveBeenCalled();
+      expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/hydrat/i);
+      // After mounting, the browser's own day is shown.
+      await vi.waitFor(() =>
+        expect(container.querySelector("[data-center-label] text")?.textContent).toBe("01:30")
+      );
+    } finally {
+      consoleError.mockRestore();
+      container.remove();
+    }
   });
 });
 
