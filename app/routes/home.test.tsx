@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot } from "react-dom/client";
 import { createRoutesStub } from "react-router";
@@ -97,8 +97,11 @@ describe("Home route — rendering", () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/"]} />);
     await screen.findByRole("group", { name: /time view/i });
-    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(["All day", "Calendars", "Up next"]);
+    // The agenda's dated title appears once the client has mounted.
+    await vi.waitFor(() => {
+      const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+      expect(headings).toEqual(["All day", "Calendars", expect.stringMatching(/\d/)]);
+    });
     // The all-day list is a wide-layout section; narrow layouts show all-day
     // events on the circle instead.
     const allDay = document.querySelector('[data-section="all-day"]')!;
@@ -192,6 +195,32 @@ describe("Home route — local day and current time", () => {
 
     expect((await centreLabel())[0]).toBe("25");
     expect(document.querySelector("[data-hand]")).toBeNull();
+  });
+
+  it("opens the same event detail from an agenda row and from its slice", async () => {
+    at("Europe/Helsinki", "2026-06-23T11:20:00Z");
+    const review = {
+      id: "r1",
+      calendarId: "google",
+      title: "Design review",
+      start: new Date(2026, 5, 23, 15).toISOString(),
+      end: new Date(2026, 5, 23, 16, 30).toISOString(),
+    };
+    const HomeStub = makeStub({
+      ...withRing(),
+      serverCalendars: [{ calendarId: "google", events: [review], fetchedRange: null }],
+    });
+    render(<HomeStub initialEntries={["/?ref=2026-06-23"]} />);
+
+    const row = await screen.findByRole("button", { name: /Design review/ });
+    expect(row.textContent).toContain("Up next");
+    fireEvent.click(row);
+    const fromRow = screen.getByRole("dialog", { name: "Design review" });
+    fireEvent.click(within(fromRow).getByRole("button", { name: /close/i }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Ring 1 segment 2/ }));
+    expect(screen.getByRole("dialog", { name: "Design review" })).toBeTruthy();
   });
 
   it("steps to the next local day", async () => {
