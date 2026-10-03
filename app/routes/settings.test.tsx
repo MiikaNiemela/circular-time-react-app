@@ -218,6 +218,54 @@ describe("Settings route — sign-in accounts", () => {
     });
   });
 
+  it("offers Remove for each linked account when there are several", () => {
+    const { getByRole } = renderSettings(["google", "outlook"]);
+    expect(getByRole("button", { name: "Remove Google sign-in account" })).toBeTruthy();
+    expect(
+      getByRole("button", { name: "Remove Microsoft (Outlook) sign-in account" })
+    ).toBeTruthy();
+  });
+
+  it("never offers to remove the only sign-in account", () => {
+    const { getByRole, queryByRole } = renderSettings(["google"]);
+    expect(queryByRole("button", { name: /^Remove .* sign-in account$/ })).toBeNull();
+    expect(getByRole("list", { name: "Sign-in accounts" }).textContent).toContain(
+      "the only sign-in account"
+    );
+  });
+
+  it("removes a sign-in account through the authenticated endpoint", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { getByRole, findByRole } = renderSettings(["google", "outlook"]);
+
+    fireEvent.click(getByRole("button", { name: "Remove Microsoft (Outlook) sign-in account" }));
+
+    expect(await findByRole("button", { name: "Link Microsoft (Outlook) account" })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("/auth/sign-in-identity-removal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "outlook" }),
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the account listed and explains when the server refuses", async () => {
+    const alertMock = vi.fn();
+    vi.stubGlobal("alert", alertMock);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 409 }))
+    );
+    const { getByRole } = renderSettings(["google", "outlook"]);
+
+    fireEvent.click(getByRole("button", { name: "Remove Google sign-in account" }));
+
+    await vi.waitFor(() => expect(alertMock).toHaveBeenCalled());
+    expect(getByRole("button", { name: "Remove Google sign-in account" })).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
   it("hides the section without an application session", () => {
     const { queryByRole } = renderSettings();
     expect(queryByRole("list", { name: "Sign-in accounts" })).toBeNull();

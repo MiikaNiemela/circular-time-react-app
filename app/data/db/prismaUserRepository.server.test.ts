@@ -15,6 +15,8 @@ describe("PrismaUserRepository", () => {
   let calendarCredentialUpsert: ReturnType<typeof vi.fn>;
   let deleteMany: ReturnType<typeof vi.fn>;
   let transaction: ReturnType<typeof vi.fn>;
+  let providerAccountFindMany: ReturnType<typeof vi.fn>;
+  let providerAccountDeleteMany: ReturnType<typeof vi.fn>;
   let repo: PrismaUserRepository;
 
   beforeEach(() => {
@@ -29,11 +31,15 @@ describe("PrismaUserRepository", () => {
     calendarConnectionDeleteMany = vi.fn();
     calendarCredentialUpsert = vi.fn();
     deleteMany = vi.fn();
+    providerAccountFindMany = vi.fn();
+    providerAccountDeleteMany = vi.fn();
     transaction = vi.fn(async (callback: (tx: unknown) => unknown) =>
       callback({
         providerAccount: {
           findUnique: providerAccountFindUnique,
           create: providerAccountCreate,
+          findMany: providerAccountFindMany,
+          deleteMany: providerAccountDeleteMany,
         },
         calendarConnection: {
           upsert: calendarConnectionUpsert,
@@ -413,6 +419,43 @@ describe("PrismaUserRepository", () => {
       calendarConnectionFindMany.mockResolvedValue([]);
       const result = await repo.getConnectedProviders("user-uuid");
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("removeSignInIdentity", () => {
+    it("removes one of several identities in a serializable transaction", async () => {
+      providerAccountFindMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);
+
+      await expect(repo.removeSignInIdentity("user-uuid", "outlook")).resolves.toBe("removed");
+
+      expect(providerAccountDeleteMany).toHaveBeenCalledWith({
+        where: { userId: "user-uuid", provider: "outlook" },
+      });
+      expect(transaction.mock.calls[0][1]).toEqual({ isolationLevel: "Serializable" });
+    });
+
+    it("refuses to remove the account's last identity", async () => {
+      providerAccountFindMany.mockResolvedValue([{ provider: "outlook" }]);
+
+      await expect(repo.removeSignInIdentity("user-uuid", "outlook")).resolves.toBe(
+        "last-identity"
+      );
+      expect(providerAccountDeleteMany).not.toHaveBeenCalled();
+    });
+
+    it("reports a provider that is not linked", async () => {
+      providerAccountFindMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);
+
+      await expect(repo.removeSignInIdentity("user-uuid", "apple")).resolves.toBe("not-linked");
+      expect(providerAccountDeleteMany).not.toHaveBeenCalled();
+    });
+
+    it("only reads and deletes the signed-in user's identities", async () => {
+      providerAccountFindMany.mockResolvedValue([{ provider: "google" }, { provider: "outlook" }]);
+      await repo.removeSignInIdentity("user-uuid", "google");
+      expect(providerAccountFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: "user-uuid" } })
+      );
     });
   });
 });

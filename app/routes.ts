@@ -9,5 +9,6 @@ export default [
   route("auth/outlook/start", "routes/auth.outlook.start.ts"),
   route("auth/outlook/callback", "routes/auth.outlook.callback.tsx"),
   route("auth/calendar-disconnection", "routes/auth.calendar-disconnection.ts"),
+  route("auth/sign-in-identity-removal", "routes/auth.sign-in-identity-removal.ts"),
   route("auth/sign-out", "routes/auth.sign-out.ts"),
 ] satisfies RouteConfig;
