@@ -47,7 +47,8 @@ export function eventRingsForCalendars(
   return calendars.map((cal, index) => {
     const size = Math.max(MIN_RING_SIZE, FIRST_EVENT_RING_SIZE - index * RING_STEP);
     return eventSlicesForView({
-      events: cal.events,
+      // The day view shows all-day events on the arch instead of the ring.
+      events: view === "day" ? cal.events.filter((e) => !e.allDay) : cal.events,
       fetchedRange: cal.fetchedRange,
       view,
       now,

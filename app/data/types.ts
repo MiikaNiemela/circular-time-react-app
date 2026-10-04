@@ -15,6 +15,9 @@ export interface TimeRange {
   end: string;
 }
 
+/** What an all-day event is: drives its glyph on the all-day arch. */
+export type AllDayKind = "birthday" | "time-off" | "other";
+
 /** A single calendar event, normalised across providers. */
 export interface CalendarEvent {
   /** Stable id, unique within its source calendar. */
@@ -31,6 +34,8 @@ export interface CalendarEvent {
   color?: string;
   /** Whether this is an all-day event. */
   allDay?: boolean;
+  /** What an all-day event is, from provider metadata. Set on all-day events only. */
+  kind?: AllDayKind;
 }
 
 /**

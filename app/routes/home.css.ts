@@ -2,10 +2,15 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../styles/theme.css";
 import { breakpoints } from "../styles/breakpoints";
 
-// The timeline SVG has a square viewBox, so width drives the size and the 1:1
-// aspect ratio fills in the height. It fills its column up to 560 px, centred.
-export const timeline = style({
+// The circle (and the all-day arch above it) fills its column up to 560 px,
+// centred. The SVG has a square viewBox, so width drives its size.
+export const circleFrame = style({
   width: "min(100%, 560px)",
+  marginInline: "auto",
+});
+
+export const timeline = style({
+  width: "100%",
   height: "auto",
   aspectRatio: "1 / 1",
   display: "block",

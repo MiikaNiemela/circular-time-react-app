@@ -7,7 +7,7 @@ import { PeriodNavigator } from "./PeriodNavigator";
 import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
 import { slicesForView } from "../lib/timeSlices";
-import { timeline } from "../routes/home.css";
+import { circleFrame, timeline } from "../routes/home.css";
 import { vars } from "../styles/theme.css";
 
 const DAY = new Date(2026, 5, 23);
@@ -27,18 +27,19 @@ function LayoutAt({ width }: { width: number }) {
             </>
           }
           circle={
-            <MultiCircle
-              rings={slicesForView("day", DAY)}
-              labelFontFamily={vars.font.mono}
-              className={timeline}
-              hand={{ degrees: 215, color: "#dc2626" }}
-            />
+            <div className={circleFrame}>
+              <MultiCircle
+                rings={slicesForView("day", DAY)}
+                labelFontFamily={vars.font.mono}
+                className={timeline}
+                hand={{ degrees: 215, color: "#dc2626" }}
+              />
+            </div>
           }
           sections={[
             {
               id: "all-day",
               title: "All day",
-              wideOnly: true,
               content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
             },
             {
@@ -115,13 +116,15 @@ async function checkLayout(root: HTMLElement, columns: 1 | 2, sections: string[]
 /** Phone (390 px): one column in reading order. */
 export const Mobile390: Story = {
   args: { width: 390 },
-  play: async ({ canvasElement }) => checkLayout(canvasElement, 1, ["calendars", "agenda"]),
+  play: async ({ canvasElement }) =>
+    checkLayout(canvasElement, 1, ["all-day", "calendars", "agenda"]),
 };
 
 /** Tablet (768 px): still one column; the circle is capped at 560 px and centred. */
 export const Tablet768: Story = {
   args: { width: 768 },
-  play: async ({ canvasElement }) => checkLayout(canvasElement, 1, ["calendars", "agenda"]),
+  play: async ({ canvasElement }) =>
+    checkLayout(canvasElement, 1, ["all-day", "calendars", "agenda"]),
 };
 
 /** Desktop (1280 px): header row, circle left, panel right. */

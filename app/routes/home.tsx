@@ -18,11 +18,21 @@ import { useNow } from "../lib/useNow";
 import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
-import { SectionPlaceholder, TimelineLayout } from "../components/TimelineLayout";
+import { TimelineLayout } from "../components/TimelineLayout";
 import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
 import { DayAgenda } from "../components/DayAgenda";
 import { dayAgenda } from "../lib/dayAgenda";
-import { settingsLink, timeline, emptyState, emptyStateLink, timeLapseToggle } from "./home.css";
+import { allDayForDay } from "../lib/allDay";
+import { AllDayArch, ARCH_OVERLAP } from "../components/AllDayArch";
+import { AllDayList } from "../components/AllDayList";
+import {
+  settingsLink,
+  circleFrame,
+  timeline,
+  emptyState,
+  emptyStateLink,
+  timeLapseToggle,
+} from "./home.css";
 
 export function meta() {
   return [
@@ -177,6 +187,7 @@ export default function Home() {
     const isToday = day.start === eventWindow("day", now).start;
     const events = activeCalendars.flatMap((calendar) => calendar.events);
     return {
+      allDay: allDayForDay(events, day),
       title: new Intl.DateTimeFormat(undefined, {
         weekday: "long",
         month: "long",
@@ -224,29 +235,40 @@ export default function Home() {
         }
         circle={
           <>
-            <MultiCircle
-              rings={rings}
-              onSliceClick={handleSliceClick}
-              className={timeline}
-              labelFontFamily={vars.font.mono}
-              hand={
-                clock?.handDegrees !== undefined
-                  ? { degrees: clock.handDegrees, color: vars.color.now }
-                  : undefined
-              }
-              centerLabel={
-                clock
-                  ? {
-                      primary: clock.primary,
-                      secondary: clock.secondary,
-                      color: vars.color.text,
-                      secondaryColor: vars.color.textMuted,
-                      haloColor: vars.color.background,
-                      fontFamily: vars.font.mono,
-                    }
-                  : undefined
-              }
-            />
+            <div className={circleFrame}>
+              {agenda && <AllDayArch items={agenda.allDay} />}
+              <div
+                style={
+                  agenda && agenda.allDay.length > 0
+                    ? { marginTop: `-${ARCH_OVERLAP}%` }
+                    : undefined
+                }
+              >
+                <MultiCircle
+                  rings={rings}
+                  onSliceClick={handleSliceClick}
+                  className={timeline}
+                  labelFontFamily={vars.font.mono}
+                  hand={
+                    clock?.handDegrees !== undefined
+                      ? { degrees: clock.handDegrees, color: vars.color.now }
+                      : undefined
+                  }
+                  centerLabel={
+                    clock
+                      ? {
+                          primary: clock.primary,
+                          secondary: clock.secondary,
+                          color: vars.color.text,
+                          secondaryColor: vars.color.textMuted,
+                          haloColor: vars.color.background,
+                          fontFamily: vars.font.mono,
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
             {noCalendars && (
               <p className={emptyState}>
                 No calendars connected.{" "}
@@ -267,14 +289,19 @@ export default function Home() {
           </>
         }
         sections={[
-          {
-            // All-day icons sit on the circle's arch on narrow layouts; the
-            // list is a wide-layout addition (M13.2).
-            id: "all-day",
-            title: "All day",
-            wideOnly: true,
-            content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
-          },
+          // The arch is an overview; the chips are the readable, selectable list
+          // of every all-day event, on every layout. Both are built on the client.
+          ...(view === "day"
+            ? [
+                {
+                  id: "all-day",
+                  title: "All day",
+                  content: agenda ? (
+                    <AllDayList items={agenda.allDay} onSelect={setSelectedEvent} />
+                  ) : null,
+                },
+              ]
+            : []),
           {
             id: "calendars",
             title: "Calendars",

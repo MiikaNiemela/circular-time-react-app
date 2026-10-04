@@ -63,4 +63,29 @@ describe("eventRingsForCalendars", () => {
     const colors = rings[0].slices.map((s) => s.color);
     expect(colors).toContain("#f59e0b");
   });
+
+  it("leaves all-day events off the ring in the day view only", () => {
+    const now = new Date(2026, 5, 23, 12);
+    const calendar: CalendarEventData = {
+      calendarId: "google",
+      fetchedRange: null,
+      events: [
+        {
+          id: "b",
+          calendarId: "google",
+          title: "Birthday",
+          start: "2026-06-23T00:00:00.000Z",
+          end: "2026-06-24T00:00:00.000Z",
+          allDay: true,
+          kind: "birthday",
+        },
+      ],
+    };
+    const eventIds = (view: "day" | "week") =>
+      eventRingsForCalendars([calendar], view, now)[0].slices.flatMap((s) =>
+        s.eventId ? [s.eventId] : []
+      );
+    expect(eventIds("day")).toEqual([]);
+    expect(eventIds("week")).toEqual(["google:b"]);
+  });
 });
