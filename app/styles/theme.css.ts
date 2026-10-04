@@ -17,7 +17,11 @@ export const vars = createThemeContract({
     /** Accent for text, links, icons and focus outlines on `background`/`surface`. */
     accent: null,
     accentHover: null,
-    /** Accent as a fill behind `onAccent` text (selected and pressed controls). */
+    /**
+     * Accent as a fill behind `onAccent` text (selected and pressed controls). It
+     * must also stand out 3:1 from `background` and `surface`, as it can be the
+     * only indicator of a selected state.
+     */
     accentFill: null,
     border: null,
     /** Foreground colour for text/icons sitting on an `accent` fill. */
@@ -88,9 +92,11 @@ export const darkColors = {
   textMuted: palette.gray400,
   accent: palette.blue400,
   accentHover: palette.blue300,
-  accentFill: palette.blue900,
+  // White text needs a dark fill (7:1), but a dark fill cannot stand out 3:1
+  // from a near-black background; dark mode uses a light fill with dark text.
+  accentFill: palette.blue400,
   border: palette.gray700,
-  onAccent: palette.white,
+  onAccent: palette.ink,
   danger: palette.red600,
   overlayShadow: palette.shadowSoft,
   now: palette.red600,

@@ -88,6 +88,11 @@ describe.each([
     expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(7);
   });
 
+  it("the accent fill stands out 3:1 from the background and the surface", () => {
+    expect(contrast(colors.accentFill, colors.background)).toBeGreaterThanOrEqual(3);
+    expect(contrast(colors.accentFill, colors.surface)).toBeGreaterThanOrEqual(3);
+  });
+
   it("the now marker reaches the 3:1 non-text contrast on the background", () => {
     expect(contrast(colors.now, colors.background)).toBeGreaterThanOrEqual(3);
   });
