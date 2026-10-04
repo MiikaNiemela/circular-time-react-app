@@ -1,6 +1,7 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
 import { retryingFetch, type RetryOptions } from "../retryingFetch";
 import { outlookAllDayKind } from "../../allDayKind";
+import { ProviderHttpError } from "../../providerErrors";
 
 /**
  * Microsoft Graph API endpoint for the user's default calendar view.
@@ -96,7 +97,7 @@ export class OutlookCalendarProvider implements CalendarProvider {
         },
       });
       if (!res.ok) {
-        throw new Error(`Outlook Calendar fetch failed: ${res.status}`);
+        throw new ProviderHttpError("Outlook", res.status);
       }
 
       const data = (await res.json()) as GraphEventsResponse;

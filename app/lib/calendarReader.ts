@@ -7,6 +7,8 @@ import type { CalendarEventData } from "./calendarTimeline";
 import type { CalendarConnection } from "./userRepository";
 import type { ServerEventCache } from "./serverEventCache";
 import { ServerCalendarCache } from "./serverCalendarCache";
+import { ReconnectRequiredError } from "./calendarCredentials";
+import { ProviderHttpError } from "../data/providerErrors";
 import {
   eventsOverlapping,
   mergeWindows,
@@ -14,10 +16,26 @@ import {
   type FetchedWindow,
 } from "./serverRefreshPolicy";
 
-/** The events to render for one calendar, and whether reading it failed. */
+/**
+ * Why a calendar could not be read:
+ * - `reconnect-required`: its credentials are missing, expired, revoked or
+ *   rejected; only the user can fix it, by connecting the calendar again.
+ * - `unavailable`: any other failure (provider errors after retries, network,
+ *   configuration); trying again later may work.
+ */
+export type CalendarFailure = "reconnect-required" | "unavailable";
+
+/** The events to render for one calendar, and why reading it failed, if it did. */
 export interface CalendarReadResult {
   calendar: CalendarEventData;
-  failed: boolean;
+  failure: CalendarFailure | null;
+}
+
+/** Classifies a read failure. */
+export function failureReason(error: unknown): CalendarFailure {
+  if (error instanceof ReconnectRequiredError) return "reconnect-required";
+  if (error instanceof ProviderHttpError && error.status === 401) return "reconnect-required";
+  return "unavailable";
 }
 
 /** Collaborators for {@link readCalendar}, injectable for tests. */
@@ -56,8 +74,8 @@ async function cachedEvents(
 /**
  * Returns fresh events for the connection, fetching stale or missing months
  * from the provider. When the provider or its credentials fail, the cached
- * months are returned and the calendar is marked failed, so the page can
- * prompt a reconnect without losing what it already knows.
+ * months are returned with the failure's reason, so the page can prompt a
+ * reconnect, or offer to try again, without losing what it already knows.
  */
 export async function readCalendar(
   deps: CalendarReaderDeps,
@@ -65,6 +83,7 @@ export async function readCalendar(
   connection: CalendarConnection,
   range: TimeRange
 ): Promise<CalendarReadResult> {
+  let failure: CalendarFailure = "unavailable";
   try {
     const provider = deps.providerFor(userId, connection);
     if (provider) {
@@ -72,14 +91,15 @@ export async function readCalendar(
       const events = await reader.fetchEvents(range);
       return {
         calendar: { calendarId: connection.provider, events, fetchedRange: range },
-        failed: false,
+        failure: null,
       };
     }
   } catch (error: unknown) {
-    console.warn(`failed to refresh ${connection.provider}:`, error);
+    failure = failureReason(error);
+    console.warn(`failed to refresh ${connection.provider} (${failure}):`, error);
   }
   return {
     calendar: await cachedEvents(deps.cache, userId, connection.provider, range),
-    failed: true,
+    failure,
   };
 }

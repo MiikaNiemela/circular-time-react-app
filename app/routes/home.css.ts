@@ -16,21 +16,6 @@ export const timeline = style({
   display: "block",
 });
 
-export const emptyState = style({
-  textAlign: "center",
-  color: vars.color.textMuted,
-  fontSize: vars.fontSize.sm,
-  margin: 0,
-});
-
-export const emptyStateLink = style({
-  color: vars.color.accent,
-  textDecoration: "none",
-  ":hover": {
-    textDecoration: "underline",
-  },
-});
-
 export const timeLapseToggle = style({
   display: "inline-flex",
   alignItems: "center",

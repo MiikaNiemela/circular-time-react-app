@@ -1,6 +1,7 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
 import { retryingFetch, type RetryOptions } from "../retryingFetch";
 import { googleAllDayKind } from "../../allDayKind";
+import { ProviderHttpError } from "../../providerErrors";
 
 const EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
@@ -111,7 +112,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        throw new Error(`Google Calendar fetch failed: ${res.status}`);
+        throw new ProviderHttpError("Google", res.status);
       }
 
       const data = (await res.json()) as GoogleApiEventsList;

@@ -6,6 +6,7 @@ import { createRoutesStub } from "react-router";
 import Home, { loader, serverReadWindow } from "./home";
 import { eventWindow } from "../lib/serverRefreshPolicy";
 import type { CalendarEventData } from "../lib/calendarTimeline";
+import type { FailedCalendar } from "../lib/blankState";
 
 // buildConfig is mocked so tests can toggle isProduction without patching
 // import.meta.env (vitest compiles PROD to a constant that can't be reassigned).
@@ -45,7 +46,7 @@ import { isProduction } from "../lib/buildConfig";
 
 interface LoaderData {
   serverCalendars: CalendarEventData[];
-  failedCalendars: string[];
+  failedCalendars: FailedCalendar[];
   view: string;
   ref: string;
 }
@@ -104,32 +105,63 @@ describe("Home route — rendering", () => {
     });
   });
 
-  it("shows 'No calendars connected' when no calendars are linked", async () => {
+  it("offers to connect a source when no calendars are linked", async () => {
     const HomeStub = makeStub();
     render(<HomeStub initialEntries={["/?ref=2026-06-20"]} />);
-    await screen.findByText(/No calendars connected/i);
-    expect(screen.getByText(/No calendars connected/i)).toBeTruthy();
+    expect(await screen.findByText("No calendars are connected yet.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Connect a source" }).getAttribute("href")).toBe(
+      "/settings"
+    );
   });
 
-  it("prompts a reconnect when the server could not read a calendar", async () => {
+  it("offers to reconnect a calendar whose credentials were rejected", async () => {
     const HomeStub = makeStub({
       ...DEFAULT_LOADER_DATA,
       serverCalendars: [{ calendarId: "google", events: [], fetchedRange: null }],
-      failedCalendars: ["google"],
+      failedCalendars: [{ calendarId: "google", reason: "reconnect-required" }],
     });
     render(<HomeStub initialEntries={["/"]} />);
-    expect(await screen.findByText(/Calendar sync failed/i)).toBeTruthy();
+    expect(await screen.findByText(/Google Calendar needs to be connected again/)).toBeTruthy();
+    const button = screen.getByRole("button", { name: "Reconnect Google Calendar" });
+    const form = button.closest("form")!;
+    expect(form.getAttribute("action")).toBe("/auth/google/start");
+    expect((form.elements.namedItem("intent") as HTMLInputElement).value).toBe("connect-calendar");
   });
 
-  it("leaves out calendars the user hid in Settings", async () => {
+  it("offers to try again when a provider was unavailable and nothing is cached", async () => {
+    const HomeStub = makeStub({
+      ...DEFAULT_LOADER_DATA,
+      serverCalendars: [{ calendarId: "outlook", events: [], fetchedRange: null }],
+      failedCalendars: [{ calendarId: "outlook", reason: "unavailable" }],
+    });
+    render(<HomeStub initialEntries={["/"]} />);
+    expect(await screen.findByText(/Outlook could not be reached/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("says when every connected calendar is hidden", async () => {
     mocks.useHiddenCalendars.mockReturnValue(["google"]);
     const HomeStub = makeStub({
       ...DEFAULT_LOADER_DATA,
       serverCalendars: [{ calendarId: "google", events: [GOOGLE_EVENT], fetchedRange: null }],
     });
     render(<HomeStub initialEntries={["/"]} />);
-    // With the only calendar hidden the timeline falls back to the empty state.
-    expect(await screen.findByText(/No calendars connected/i)).toBeTruthy();
+    expect(await screen.findByText("All your calendars are hidden.")).toBeTruthy();
+  });
+
+  it("says when the period simply has no events", async () => {
+    const HomeStub = makeStub({
+      ...DEFAULT_LOADER_DATA,
+      serverCalendars: [
+        {
+          calendarId: "google",
+          events: [],
+          fetchedRange: { start: "2026-01-01", end: "2027-01-01" },
+        },
+      ],
+    });
+    render(<HomeStub initialEntries={["/?ref=2026-06-20"]} />);
+    expect(await screen.findByText("No events in this period.")).toBeTruthy();
   });
 });
 
@@ -359,18 +391,22 @@ describe("Home route — server data", () => {
     serverMocks.readCalendarEvents
       .mockResolvedValueOnce({
         calendar: { calendarId: "google", events: [], fetchedRange: null },
-        failed: false,
+        failure: null,
       })
       .mockResolvedValueOnce({
         calendar: { calendarId: "outlook", events: [], fetchedRange: null },
-        failed: true,
+        failure: "reconnect-required",
       });
 
     const result = await loader({
       request: new Request("http://localhost/"),
     } as Parameters<typeof loader>[0]);
 
-    expect(result).toEqual(expect.objectContaining({ failedCalendars: ["outlook"] }));
+    expect(result).toEqual(
+      expect.objectContaining({
+        failedCalendars: [{ calendarId: "outlook", reason: "reconnect-required" }],
+      })
+    );
   });
 });
 
