@@ -14,6 +14,7 @@ describe("theme contract", () => {
     expect(vars.color).toHaveProperty("text");
     expect(vars.color).toHaveProperty("accent");
     expect(vars.color).toHaveProperty("accentHover");
+    expect(vars.color).toHaveProperty("accentFill");
     expect(vars.color).toHaveProperty("border");
   });
 
@@ -76,6 +77,15 @@ describe.each([
   it("text and muted text reach 4.5:1 on the background", () => {
     expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(colors.textMuted, colors.background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("accent text reaches 4.5:1 on the background and the surface", () => {
+    expect(contrast(colors.accent, colors.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.accent, colors.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("text on the accent fill reaches AAA (7:1)", () => {
+    expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(7);
   });
 
   it("the now marker reaches the 3:1 non-text contrast on the background", () => {

@@ -116,7 +116,7 @@ export const connectButton = style({
   cursor: "pointer",
   transition: "background 0.15s, color 0.15s",
   ":hover": {
-    background: vars.color.accent,
+    background: vars.color.accentFill,
     color: vars.color.onAccent,
   },
   ":focus-visible": {
@@ -180,7 +180,7 @@ export const toggleSlider = style({
   },
   selectors: {
     "input:checked + &": {
-      background: vars.color.accent,
+      background: vars.color.accentFill,
     },
     "input:checked + &::before": {
       transform: "translateX(16px)",

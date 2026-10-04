@@ -24,7 +24,7 @@ export const arrow = style({
   cursor: "pointer",
   transition: "background 0.15s, color 0.15s",
   ":hover": {
-    background: vars.color.accent,
+    background: vars.color.accentFill,
     color: vars.color.onAccent,
   },
   ":focus-visible": {

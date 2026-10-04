@@ -14,8 +14,11 @@ export const vars = createThemeContract({
     surface: null,
     text: null,
     textMuted: null,
+    /** Accent for text, links, icons and focus outlines on `background`/`surface`. */
     accent: null,
     accentHover: null,
+    /** Accent as a fill behind `onAccent` text (selected and pressed controls). */
+    accentFill: null,
     border: null,
     /** Foreground colour for text/icons sitting on an `accent` fill. */
     onAccent: null,
@@ -66,6 +69,7 @@ export const lightColors = {
   textMuted: palette.gray500,
   accent: palette.blue600,
   accentHover: palette.blue700,
+  accentFill: palette.blue900,
   border: palette.gray200,
   onAccent: palette.white,
   danger: palette.red600,
@@ -82,8 +86,9 @@ export const darkColors = {
   surface: palette.gray900,
   text: palette.gray50,
   textMuted: palette.gray400,
-  accent: palette.blue600,
+  accent: palette.blue400,
   accentHover: palette.blue300,
+  accentFill: palette.blue900,
   border: palette.gray700,
   onAccent: palette.white,
   danger: palette.red600,
