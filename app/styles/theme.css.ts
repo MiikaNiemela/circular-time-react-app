@@ -82,7 +82,7 @@ export const darkColors = {
   surface: palette.gray900,
   text: palette.gray50,
   textMuted: palette.gray400,
-  accent: palette.blue400,
+  accent: palette.blue600,
   accentHover: palette.blue300,
   border: palette.gray700,
   onAccent: palette.white,

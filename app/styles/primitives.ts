@@ -13,6 +13,7 @@
 /**
  * The full colour palette. Names encode hue + a numeric weight (higher = darker
  * for greys/blues), so semantic aliases can be re-pointed without renaming.
+ * NOTE: white (#ffffff) small text (<18px) must have blue background of (#134AD3) or "darker"
  */
 export const palette = {
   white: "#ffffff",
@@ -26,8 +27,9 @@ export const palette = {
   gray900: "#1e1e1e",
   ink: "#111111",
   // Blues, dark → light (accent + temporal grid).
+  blue900: "#134ad3", // small white text background minimum darkness for WCAG AAA
   blue700: "#1d4ed8",
-  blue600: "#2563eb",
+  blue600: "#3A73DC", // large white text background minimum darkness for WCAG AAA
   blue400: "#60a5fa",
   blue300: "#93c5fd",
   amber500: "#f59e0b",
