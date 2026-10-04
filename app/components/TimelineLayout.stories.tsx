@@ -4,7 +4,6 @@ import { SectionPlaceholder, TimelineLayout } from "./TimelineLayout";
 import { CalendarLegend } from "./CalendarLegend";
 import { SegmentedControl } from "./SegmentedControl";
 import { PeriodNavigator } from "./PeriodNavigator";
-import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
 import { slicesForView } from "../lib/timeSlices";
 import { circleFrame, timeline } from "../routes/home.css";
@@ -15,56 +14,54 @@ const DAY = new Date(2026, 5, 23);
 /** The full layout inside a box of the given width. */
 function LayoutAt({ width }: { width: number }) {
   return (
-    <ThemeProvider>
-      <div data-testid="frame" style={{ width, outline: "1px dashed #999" }}>
-        <TimelineLayout
-          brand={<span>Circular Time</span>}
-          actions={<button type="button">⚙</button>}
-          controls={
-            <>
-              <SegmentedControl value="day" onChange={() => {}} />
-              <PeriodNavigator view="day" value={DAY} onChange={() => {}} now={DAY} />
-            </>
-          }
-          circle={
-            <div className={circleFrame}>
-              <MultiCircle
-                rings={slicesForView("day", DAY)}
-                labelFontFamily={vars.font.mono}
-                className={timeline}
-                hand={{ degrees: 215, color: "#dc2626" }}
+    <div data-testid="frame" style={{ width, outline: "1px dashed #999" }}>
+      <TimelineLayout
+        brand={<span>Circular Time</span>}
+        actions={<button type="button">⚙</button>}
+        controls={
+          <>
+            <SegmentedControl value="day" onChange={() => {}} />
+            <PeriodNavigator view="day" value={DAY} onChange={() => {}} now={DAY} />
+          </>
+        }
+        circle={
+          <div className={circleFrame}>
+            <MultiCircle
+              rings={slicesForView("day", DAY)}
+              labelFontFamily={vars.font.mono}
+              className={timeline}
+              hand={{ degrees: 215, color: "#dc2626" }}
+            />
+          </div>
+        }
+        sections={[
+          {
+            id: "all-day",
+            title: "All day",
+            content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
+          },
+          {
+            id: "calendars",
+            title: "Calendars",
+            content: (
+              <CalendarLegend
+                items={[
+                  { id: "google", label: "Google Calendar" },
+                  { id: "outlook", label: "Outlook" },
+                ]}
               />
-            </div>
-          }
-          sections={[
-            {
-              id: "all-day",
-              title: "All day",
-              content: <SectionPlaceholder>All-day events will be listed here.</SectionPlaceholder>,
-            },
-            {
-              id: "calendars",
-              title: "Calendars",
-              content: (
-                <CalendarLegend
-                  items={[
-                    { id: "google", label: "Google Calendar" },
-                    { id: "outlook", label: "Outlook" },
-                  ]}
-                />
-              ),
-            },
-            {
-              id: "agenda",
-              title: "Up next",
-              content: (
-                <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
-              ),
-            },
-          ]}
-        />
-      </div>
-    </ThemeProvider>
+            ),
+          },
+          {
+            id: "agenda",
+            title: "Up next",
+            content: (
+              <SectionPlaceholder>The day&apos;s events will be listed here.</SectionPlaceholder>
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }
 

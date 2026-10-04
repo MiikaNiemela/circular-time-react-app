@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRoutesStub } from "react-router";
 import SignIn from "./sign-in";
-import { ThemeProvider } from "../components/ThemeProvider";
 
 function HomeStub() {
   return <div style={{ padding: "2rem" }}>Timeline (you are signed in)</div>;
@@ -14,11 +13,9 @@ const SignInStub = createRoutesStub([
 
 function renderSignIn() {
   return (
-    <ThemeProvider>
-      <div style={{ minHeight: "100dvh" }}>
-        <SignInStub initialEntries={["/sign-in"]} />
-      </div>
-    </ThemeProvider>
+    <div style={{ minHeight: "100dvh" }}>
+      <SignInStub initialEntries={["/sign-in"]} />
+    </div>
   );
 }
 

@@ -1,7 +1,6 @@
 import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { EventDetail } from "./EventDetail";
-import { ThemeProvider } from "./ThemeProvider";
 
 const meta: Meta<typeof EventDetail> = {
   title: "Components/EventDetail",
@@ -9,11 +8,9 @@ const meta: Meta<typeof EventDetail> = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <ThemeProvider>
-        <div style={{ height: "300px", position: "relative" }}>
-          <Story />
-        </div>
-      </ThemeProvider>
+      <div style={{ height: "300px", position: "relative" }}>
+        <Story />
+      </div>
     ),
   ],
   args: { onClose: fn() },

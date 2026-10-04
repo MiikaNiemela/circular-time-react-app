@@ -2,7 +2,6 @@ import { fn } from "storybook/test";
 import { expect, userEvent, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { PeriodNavigator } from "./PeriodNavigator";
-import { ThemeProvider } from "./ThemeProvider";
 
 const reference = new Date(2026, 5, 19); // Fri 19 Jun 2026
 
@@ -10,13 +9,6 @@ const meta: Meta<typeof PeriodNavigator> = {
   title: "Components/PeriodNavigator",
   component: PeriodNavigator,
   parameters: { layout: "centered" },
-  decorators: [
-    (Story) => (
-      <ThemeProvider>
-        <Story />
-      </ThemeProvider>
-    ),
-  ],
   args: { onChange: fn(), value: reference, now: reference },
 };
 export default meta;

@@ -2,7 +2,6 @@ import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { CircleWithArch } from "./AllDayArch";
 import { AllDayList } from "./AllDayList";
-import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
 import { slicesForView } from "../lib/timeSlices";
 import type { AllDayItem } from "../lib/allDay";
@@ -37,22 +36,20 @@ const EIGHT = [
 
 function Preview({ items }: { items: AllDayItem[] }) {
   return (
-    <ThemeProvider>
-      <div style={{ width: 420, padding: 16, background: vars.color.background }}>
-        <div className={circleFrame}>
-          <CircleWithArch items={items}>
-            <MultiCircle
-              rings={slicesForView("day", DAY)}
-              className={timeline}
-              labelFontFamily={vars.font.mono}
-            />
-          </CircleWithArch>
-        </div>
-        <div style={{ marginTop: 16 }}>
-          <AllDayList items={items} onSelect={() => {}} />
-        </div>
+    <div style={{ width: 420, padding: 16, background: vars.color.background }}>
+      <div className={circleFrame}>
+        <CircleWithArch items={items}>
+          <MultiCircle
+            rings={slicesForView("day", DAY)}
+            className={timeline}
+            labelFontFamily={vars.font.mono}
+          />
+        </CircleWithArch>
       </div>
-    </ThemeProvider>
+      <div style={{ marginTop: 16 }}>
+        <AllDayList items={items} onSelect={() => {}} />
+      </div>
+    </div>
   );
 }
 

@@ -4,10 +4,9 @@ import { MultiCircle, type MultiCircleProps, type RingConfig } from ".";
 import { slicesForView } from "../../lib/timeSlices";
 import { eventRingsForCalendars, type CalendarEvent } from "../../lib/calendarTimeline";
 import { useState } from "react";
-import { ThemeProvider } from "../ThemeProvider";
 import { EventDetail } from "../EventDetail";
 import { dayClock } from "../../lib/dayClock";
-import { darkTheme, lightTheme, vars } from "../../styles/theme.css";
+import { vars } from "../../styles/theme.css";
 
 /** Event map used by the interactive demo story — keys match the eventId format. */
 const CLICK_DEMO_EVENTS = new Map<string, CalendarEvent>([
@@ -201,11 +200,9 @@ export const SingleRing: Story = {
 export const TwoCalendars: Story = {
   decorators: [
     (Story) => (
-      <ThemeProvider>
-        <div style={{ position: "relative", minHeight: "280px" }}>
-          <Story />
-        </div>
-      </ThemeProvider>
+      <div style={{ position: "relative", minHeight: "280px" }}>
+        <Story />
+      </div>
     ),
   ],
   render: (args) => <EventDetailPreview {...args} />,
@@ -302,24 +299,22 @@ function overnightRings(now: Date): RingConfig[] {
 export const CrossBoundaryEvent: Story = {
   args: { onSliceClick: fn() },
   render: ({ onSliceClick }) => (
-    <ThemeProvider>
-      <div style={{ display: "flex", gap: "2rem" }}>
-        <figure data-testid="friday">
-          <MultiCircle
-            rings={overnightRings(new Date(2026, 5, 19, 12))}
-            onSliceClick={onSliceClick}
-          />
-          <figcaption>Friday</figcaption>
-        </figure>
-        <figure data-testid="saturday">
-          <MultiCircle
-            rings={overnightRings(new Date(2026, 5, 20, 12))}
-            onSliceClick={onSliceClick}
-          />
-          <figcaption>Saturday</figcaption>
-        </figure>
-      </div>
-    </ThemeProvider>
+    <div style={{ display: "flex", gap: "2rem" }}>
+      <figure data-testid="friday">
+        <MultiCircle
+          rings={overnightRings(new Date(2026, 5, 19, 12))}
+          onSliceClick={onSliceClick}
+        />
+        <figcaption>Friday</figcaption>
+      </figure>
+      <figure data-testid="saturday">
+        <MultiCircle
+          rings={overnightRings(new Date(2026, 5, 20, 12))}
+          onSliceClick={onSliceClick}
+        />
+        <figcaption>Saturday</figcaption>
+      </figure>
+    </div>
   ),
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
@@ -436,11 +431,9 @@ function EventDetailPreview(props: MultiCircleProps) {
 export const TwoCalendarsWithEventDetail: Story = {
   decorators: [
     (Story) => (
-      <ThemeProvider>
-        <div style={{ position: "relative", minHeight: "280px" }}>
-          <Story />
-        </div>
-      </ThemeProvider>
+      <div style={{ position: "relative", minHeight: "280px" }}>
+        <Story />
+      </div>
     ),
   ],
   render: (args) => <EventDetailPreview {...args} />,
@@ -507,13 +500,10 @@ const CLOCK_CALENDARS = [
   },
 ];
 
-function CurrentTimePreview({ now, theme }: { now: Date; theme: "light" | "dark" }) {
+function CurrentTimePreview({ now }: { now: Date }) {
   const clock = dayClock("day", CLOCK_DAY, now, "en-GB")!;
   return (
-    <div
-      className={theme === "dark" ? darkTheme : lightTheme}
-      style={{ background: vars.color.background, padding: 16, width: 360 }}
-    >
+    <div style={{ background: vars.color.background, padding: 16, width: 360 }}>
       <MultiCircle
         rings={[
           ...slicesForView("day", CLOCK_DAY),
@@ -538,7 +528,7 @@ function CurrentTimePreview({ now, theme }: { now: Date; theme: "light" | "dark"
 
 /** Today: the hand points at 14:20 and the centre shows the time and date. */
 export const CurrentTimeToday: Story = {
-  render: () => <CurrentTimePreview now={new Date(2026, 5, 23, 14, 20)} theme="light" />,
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 23, 14, 20)} />,
   play: async ({ canvasElement }) => {
     const label = within(canvasElement.querySelector<HTMLElement>("[data-center-label]")!);
     await expect(label.getByText("14:20")).toBeInTheDocument();
@@ -548,20 +538,10 @@ export const CurrentTimeToday: Story = {
 
 /** Another day: no hand, and the centre shows the date only. */
 export const CurrentTimeOtherDay: Story = {
-  render: () => <CurrentTimePreview now={new Date(2026, 5, 24, 9)} theme="light" />,
+  render: () => <CurrentTimePreview now={new Date(2026, 5, 24, 9)} />,
   play: async ({ canvasElement }) => {
     const label = within(canvasElement.querySelector<HTMLElement>("[data-center-label]")!);
     await expect(label.getByText("23")).toBeInTheDocument();
     await expect(canvasElement.querySelector("[data-hand]")).toBeNull();
   },
-};
-
-/** Today in the dark theme. */
-export const CurrentTimeTodayDark: Story = {
-  render: () => <CurrentTimePreview now={new Date(2026, 5, 23, 14, 20)} theme="dark" />,
-};
-
-/** Another day in the dark theme. */
-export const CurrentTimeOtherDayDark: Story = {
-  render: () => <CurrentTimePreview now={new Date(2026, 5, 24, 9)} theme="dark" />,
 };

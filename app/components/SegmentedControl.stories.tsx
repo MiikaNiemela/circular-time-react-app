@@ -1,19 +1,11 @@
 import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { SegmentedControl } from "./SegmentedControl";
-import { ThemeProvider } from "./ThemeProvider";
 
 const meta: Meta<typeof SegmentedControl> = {
   title: "Components/SegmentedControl",
   component: SegmentedControl,
   parameters: { layout: "centered" },
-  decorators: [
-    (Story) => (
-      <ThemeProvider>
-        <Story />
-      </ThemeProvider>
-    ),
-  ],
   args: { onChange: fn() },
 };
 export default meta;

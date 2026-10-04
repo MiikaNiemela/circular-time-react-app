@@ -2,7 +2,6 @@ import { expect, userEvent, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRoutesStub } from "react-router";
 import Settings from "./settings";
-import { ThemeProvider } from "../components/ThemeProvider";
 
 // Must match the constant in app/data/calendarVisibility.ts.
 const VISIBILITY_KEY = "circular-time-calendar-visibility";
@@ -51,11 +50,7 @@ const GoogleConnectedSettingsStub = createRoutesStub([
 ]);
 
 function renderSettings() {
-  return (
-    <ThemeProvider>
-      <SettingsStub initialEntries={["/settings"]} />
-    </ThemeProvider>
-  );
+  return <SettingsStub initialEntries={["/settings"]} />;
 }
 
 const meta: Meta<typeof Settings> = {
@@ -90,11 +85,7 @@ export const GoogleConnected: Story = {
     localStorage.removeItem(VISIBILITY_KEY);
     return () => localStorage.removeItem(VISIBILITY_KEY);
   },
-  render: () => (
-    <ThemeProvider>
-      <GoogleConnectedSettingsStub initialEntries={["/settings"]} />
-    </ThemeProvider>
-  ),
+  render: () => <GoogleConnectedSettingsStub initialEntries={["/settings"]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // The checkbox itself is visually hidden (opacity:0 CSS toggle); click the
@@ -115,11 +106,7 @@ export const GoogleConnected: Story = {
  * the Account section offers Sign out.
  */
 export const SignInAccounts: Story = {
-  render: () => (
-    <ThemeProvider>
-      <SignedInSettingsStub initialEntries={["/settings"]} />
-    </ThemeProvider>
-  ),
+  render: () => <SignedInSettingsStub initialEntries={["/settings"]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const list = await canvas.findByRole("list", { name: "Sign-in accounts" });
@@ -153,11 +140,7 @@ export const RemoveSignInAccount: Story = {
       window.fetch = original;
     };
   },
-  render: () => (
-    <ThemeProvider>
-      <TwoIdentitiesSettingsStub initialEntries={["/settings"]} />
-    </ThemeProvider>
-  ),
+  render: () => <TwoIdentitiesSettingsStub initialEntries={["/settings"]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const list = await canvas.findByRole("list", { name: "Sign-in accounts" });

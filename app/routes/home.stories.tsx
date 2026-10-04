@@ -3,7 +3,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRoutesStub } from "react-router";
 import Home from "./home";
 import { formatLocalDate } from "../lib/localDate";
-import { ThemeProvider } from "../components/ThemeProvider";
 
 // Stub the settings route so the <Link to="/settings"> in the empty-state
 // prompt navigates without a full router.
@@ -29,11 +28,9 @@ const HomeStub = createRoutesStub([
 
 function renderHome() {
   return (
-    <ThemeProvider>
-      <div style={{ minHeight: "100dvh" }}>
-        <HomeStub initialEntries={["/"]} />
-      </div>
-    </ThemeProvider>
+    <div style={{ minHeight: "100dvh" }}>
+      <HomeStub initialEntries={["/"]} />
+    </div>
   );
 }
 
@@ -121,11 +118,9 @@ export const AllDayOnNarrowLayout: Story = {
     return () => localStorage.clear();
   },
   render: () => (
-    <ThemeProvider>
-      <div style={{ width: 390 }}>
-        <AllDayHomeStub initialEntries={["/"]} />
-      </div>
-    </ThemeProvider>
+    <div style={{ width: 390 }}>
+      <AllDayHomeStub initialEntries={["/"]} />
+    </div>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
