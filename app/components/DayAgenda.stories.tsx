@@ -1,7 +1,6 @@
 import { expect, userEvent, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { DayAgenda } from "./DayAgenda";
-import { ThemeProvider } from "./ThemeProvider";
 import { layoutContainer } from "./TimelineLayout.css";
 import { dayAgenda } from "../lib/dayAgenda";
 import { eventWindow } from "../data/eventSlices";
@@ -81,15 +80,13 @@ const BUSY = [
 
 function Frame({ width, events, now }: { width: number; events: typeof BUSY; now: Date | null }) {
   return (
-    <ThemeProvider>
-      <div className={layoutContainer} style={{ width, minHeight: "auto", padding: 16 }}>
-        <DayAgenda
-          items={dayAgenda(events, DAY, now, "en-GB")}
-          calendarName={calendarLabel}
-          onSelect={() => {}}
-        />
-      </div>
-    </ThemeProvider>
+    <div className={layoutContainer} style={{ width, minHeight: "auto", padding: 16 }}>
+      <DayAgenda
+        items={dayAgenda(events, DAY, now, "en-GB")}
+        calendarName={calendarLabel}
+        onSelect={() => {}}
+      />
+    </div>
   );
 }
 

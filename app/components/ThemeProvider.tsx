@@ -38,14 +38,22 @@ export function useTheme() {
 
 interface ThemeProviderProps {
   children: React.ReactNode;
+  /** Control the theme externally, without changing the saved app preference. */
+  theme?: Theme;
+  onThemeChange?: (theme: Theme) => void;
 }
 
-export function ThemeProvider({ children }: ThemeProviderProps) {
+export function ThemeProvider({
+  children,
+  theme: controlledTheme,
+  onThemeChange,
+}: ThemeProviderProps) {
   // Lazy initializer reads localStorage/matchMedia on first client render only;
   // SSR gets the "light" fallback since neither API is available server-side.
-  const [theme, setTheme] = useState<Theme>(() =>
+  const [storedTheme, setTheme] = useState<Theme>(() =>
     typeof window !== "undefined" ? (getStoredTheme() ?? getSystemTheme()) : "light"
   );
+  const theme = controlledTheme ?? storedTheme;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -53,16 +61,21 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const remove = theme === "dark" ? lightTheme : darkTheme;
     root.classList.remove(remove);
     root.classList.add(add);
+    if (controlledTheme !== undefined) return;
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
       // localStorage unavailable
     }
-  }, [theme]);
+  }, [theme, controlledTheme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme((t) => (t === "light" ? "dark" : "light"));
-  }, []);
+    if (controlledTheme !== undefined) {
+      onThemeChange?.(controlledTheme === "light" ? "dark" : "light");
+    } else {
+      setTheme((t) => (t === "light" ? "dark" : "light"));
+    }
+  }, [controlledTheme, onThemeChange]);
 
   return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 }

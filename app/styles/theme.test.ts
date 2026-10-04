@@ -14,6 +14,7 @@ describe("theme contract", () => {
     expect(vars.color).toHaveProperty("text");
     expect(vars.color).toHaveProperty("accent");
     expect(vars.color).toHaveProperty("accentHover");
+    expect(vars.color).toHaveProperty("accentFill");
     expect(vars.color).toHaveProperty("border");
   });
 
@@ -76,6 +77,26 @@ describe.each([
   it("text and muted text reach 4.5:1 on the background", () => {
     expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(colors.textMuted, colors.background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("accent text reaches 4.5:1 on the background and the surface", () => {
+    expect(contrast(colors.accent, colors.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.accent, colors.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("text on the accent fill reaches AAA (7:1)", () => {
+    expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(7);
+  });
+
+  it("a switch knob stands out 3:1 from its track, off and on", () => {
+    // Off: text-coloured knob on the border-coloured track; on: onAccent on accentFill.
+    expect(contrast(colors.text, colors.border)).toBeGreaterThanOrEqual(3);
+    expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("the accent fill stands out 3:1 from the background and the surface", () => {
+    expect(contrast(colors.accentFill, colors.background)).toBeGreaterThanOrEqual(3);
+    expect(contrast(colors.accentFill, colors.surface)).toBeGreaterThanOrEqual(3);
   });
 
   it("the now marker reaches the 3:1 non-text contrast on the background", () => {

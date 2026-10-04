@@ -39,7 +39,7 @@ export const segment = style({
 
 export const segmentVariants = styleVariants({
   active: {
-    background: vars.color.accent,
+    background: vars.color.accentFill,
     color: vars.color.onAccent,
     ":hover": {
       color: vars.color.onAccent,

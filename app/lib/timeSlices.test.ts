@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { palette } from "../styles/primitives";
 import { slicesForView } from "./timeSlices";
 
 // A fixed reference date: Thursday 2026-06-19, 14:30
@@ -122,12 +123,12 @@ describe("slicesForView (temporalColors: true)", () => {
     const rings = slicesForView("day", REF, { temporalColors: true });
 
     it("14 hours are marked past (hours 0–13)", () => {
-      const past = rings[0].slices.filter((s) => s.color === "#2563eb");
+      const past = rings[0].slices.filter((s) => s.color === palette.blue600);
       expect(past.length).toBe(14);
     });
 
     it("current hour (14) is marked with light blue", () => {
-      expect(rings[0].slices[14].color).toBe("#60a5fa");
+      expect(rings[0].slices[14].color).toBe(palette.blue400);
     });
   });
 
@@ -136,11 +137,11 @@ describe("slicesForView (temporalColors: true)", () => {
     // 2026-06-19 is Friday → dayOfWeek = 4 (Mon=0)
 
     it("4 days are past (Mon–Thu)", () => {
-      expect(rings[0].slices.filter((s) => s.color === "#2563eb").length).toBe(4);
+      expect(rings[0].slices.filter((s) => s.color === palette.blue600).length).toBe(4);
     });
 
     it("Friday (index 4) is current", () => {
-      expect(rings[0].slices[4].color).toBe("#60a5fa");
+      expect(rings[0].slices[4].color).toBe(palette.blue400);
     });
   });
 
@@ -149,11 +150,11 @@ describe("slicesForView (temporalColors: true)", () => {
     // June 2026: 30 days; today = 19th
 
     it("18 days are past (days 1–18)", () => {
-      expect(rings[0].slices.filter((s) => s.color === "#2563eb").length).toBe(18);
+      expect(rings[0].slices.filter((s) => s.color === palette.blue600).length).toBe(18);
     });
 
     it("day 19 (index 18) is current", () => {
-      expect(rings[0].slices[18].color).toBe("#60a5fa");
+      expect(rings[0].slices[18].color).toBe(palette.blue400);
     });
   });
 
@@ -162,11 +163,11 @@ describe("slicesForView (temporalColors: true)", () => {
     // June = month index 5
 
     it("5 months are past (Jan–May)", () => {
-      expect(rings[0].slices.filter((s) => s.color === "#2563eb").length).toBe(5);
+      expect(rings[0].slices.filter((s) => s.color === palette.blue600).length).toBe(5);
     });
 
     it("June (index 5) is current", () => {
-      expect(rings[0].slices[5].color).toBe("#60a5fa");
+      expect(rings[0].slices[5].color).toBe(palette.blue400);
     });
   });
 });

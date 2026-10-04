@@ -116,7 +116,7 @@ export const connectButton = style({
   cursor: "pointer",
   transition: "background 0.15s, color 0.15s",
   ":hover": {
-    background: vars.color.accent,
+    background: vars.color.accentFill,
     color: vars.color.onAccent,
   },
   ":focus-visible": {
@@ -175,15 +175,18 @@ export const toggleSlider = style({
     left: "3px",
     top: "3px",
     borderRadius: "50%",
-    background: vars.color.onAccent,
-    transition: "transform 0.2s",
+    // Off: a text-coloured knob on the border-coloured track; on: onAccent on
+    // accentFill. Both stand out at least 3:1 (theme.test.ts).
+    background: vars.color.text,
+    transition: "transform 0.2s, background 0.2s",
   },
   selectors: {
     "input:checked + &": {
-      background: vars.color.accent,
+      background: vars.color.accentFill,
     },
     "input:checked + &::before": {
       transform: "translateX(16px)",
+      background: vars.color.onAccent,
     },
     "input:disabled + &": {
       opacity: 0.4,

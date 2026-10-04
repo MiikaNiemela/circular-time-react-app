@@ -26,6 +26,8 @@ export const palette = {
   gray900: "#1e1e1e",
   ink: "#111111",
   // Blues, dark → light (accent + temporal grid).
+  /** The lightest blue behind small white text that still reaches WCAG AAA (7:1). */
+  blue900: "#134ad3",
   blue700: "#1d4ed8",
   blue600: "#2563eb",
   blue400: "#60a5fa",
