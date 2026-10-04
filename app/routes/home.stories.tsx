@@ -72,3 +72,69 @@ export const WithDevFixture: Story = {
     expect(canvas.queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
+
+/** Today's local date as an all-day event stores it: UTC midnights of the dates. */
+function allDayToday(id: string, title: string, kind: "birthday" | "time-off" | "other") {
+  const now = new Date();
+  const day = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return {
+    id,
+    calendarId: "google",
+    title,
+    start: new Date(day).toISOString(),
+    end: new Date(day + 24 * 60 * 60 * 1000).toISOString(),
+    allDay: true,
+    kind,
+  };
+}
+
+const AllDayHomeStub = createRoutesStub([
+  {
+    path: "/",
+    Component: Home,
+    loader: () => ({
+      serverCalendars: [
+        {
+          calendarId: "google",
+          fetchedRange: null,
+          events: [
+            allDayToday("b", "Mara's birthday", "birthday"),
+            allDayToday("l", "Annual leave", "time-off"),
+          ],
+        },
+      ],
+      failedCalendars: [],
+      view: "day",
+      ref: formatLocalDate(new Date()),
+    }),
+  },
+  { path: "/settings", Component: SettingsStub },
+]);
+
+/**
+ * A phone-width timeline with all-day events: the arch shows them, and the
+ * All day list keeps every one readable and selectable on narrow layouts too.
+ */
+export const AllDayOnNarrowLayout: Story = {
+  beforeEach: () => {
+    localStorage.clear();
+    return () => localStorage.clear();
+  },
+  render: () => (
+    <ThemeProvider>
+      <div style={{ width: 390 }}>
+        <AllDayHomeStub initialEntries={["/"]} />
+      </div>
+    </ThemeProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("img", { name: /All day: Mara's birthday \(birthday\)/ });
+    const chip = await canvas.findByRole("button", { name: "Mara's birthday (birthday)" });
+    await expect(chip).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Annual leave (time off)" })).toBeVisible();
+    await userEvent.click(chip);
+    const dialog = await canvas.findByRole("dialog", { name: "Mara's birthday" });
+    await expect(dialog).toBeInTheDocument();
+  },
+};

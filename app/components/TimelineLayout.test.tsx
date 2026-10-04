@@ -50,14 +50,4 @@ describe("TimelineLayout", () => {
     const { container } = renderLayout([]);
     expect(container.querySelector('[data-layout="panel"]')).toBeNull();
   });
-
-  it("marks wide-only sections so narrow layouts can hide them", () => {
-    const { container } = renderLayout([
-      { id: "all-day", title: "All day", content: <p />, wideOnly: true },
-      { id: "calendars", title: "Calendars", content: <p /> },
-    ]);
-    const [allDay, calendars] = container.querySelectorAll("[data-section]");
-    expect(allDay.className).toMatch(/wideOnly/);
-    expect(calendars.className).not.toMatch(/wideOnly/);
-  });
 });

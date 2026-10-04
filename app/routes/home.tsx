@@ -289,14 +289,13 @@ export default function Home() {
           </>
         }
         sections={[
-          // All-day icons sit on the circle's arch on every layout; the list
-          // of chips is a wide-layout addition. Both are built on the client.
+          // The arch is an overview; the chips are the readable, selectable list
+          // of every all-day event, on every layout. Both are built on the client.
           ...(view === "day"
             ? [
                 {
                   id: "all-day",
                   title: "All day",
-                  wideOnly: true,
                   content: agenda ? (
                     <AllDayList items={agenda.allDay} onSelect={setSelectedEvent} />
                   ) : null,

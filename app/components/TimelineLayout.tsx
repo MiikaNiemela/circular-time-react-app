@@ -11,7 +11,6 @@ import {
   panel,
   section,
   sectionTitle,
-  wideOnlySection,
   placeholder,
 } from "./TimelineLayout.css";
 
@@ -21,8 +20,6 @@ export interface PanelSection {
   id: string;
   title: string;
   content: ReactNode;
-  /** Shown only in the wide (two-column) layout. */
-  wideOnly?: boolean;
 }
 
 export interface TimelineLayoutProps {
@@ -74,7 +71,7 @@ export function TimelineLayout({
               {sections.map((s) => (
                 <section
                   key={s.id}
-                  className={s.wideOnly ? `${section} ${wideOnlySection}` : section}
+                  className={section}
                   aria-labelledby={`section-${s.id}`}
                   data-section={s.id}
                 >

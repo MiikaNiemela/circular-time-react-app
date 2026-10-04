@@ -125,11 +125,6 @@ export const sectionTitle = style({
   color: vars.color.textMuted,
 });
 
-export const wideOnlySection = style({
-  display: "none",
-  "@container": { [containerWidths.lg]: { display: "flex" } },
-});
-
 export const placeholder = style({
   margin: 0,
   color: vars.color.textMuted,

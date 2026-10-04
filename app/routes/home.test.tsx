@@ -102,11 +102,6 @@ describe("Home route — rendering", () => {
       const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
       expect(headings).toEqual(["All day", "Calendars", expect.stringMatching(/\d/)]);
     });
-    // The all-day list is a wide-layout section; narrow layouts show all-day
-    // events on the circle instead.
-    const allDay = document.querySelector('[data-section="all-day"]')!;
-    expect(allDay.className).toMatch(/wideOnly/);
-    expect(document.querySelector('[data-section="calendars"]')!.className).not.toMatch(/wideOnly/);
   });
 
   it("shows 'No calendars connected' when no calendars are linked", async () => {
