@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { AllDayItem } from "../lib/allDay";
 import { archLayout, ARCH_CAPACITY } from "../lib/allDay";
 import { KindGlyph, KIND_COLOR, KIND_LABEL } from "./AllDayGlyph";
@@ -24,10 +25,23 @@ function position(degrees: number) {
 /**
  * The shown day's all-day events as icons on an arch across the top of the
  * circle. Up to `capacity` icons are drawn; beyond that the last becomes "+N".
- * It is as wide as the circle and sits directly above it.
+ * It is as wide as the circle and sits directly above it. Without events it
+ * renders an empty, hidden box of the same height, so the layout is stable.
  */
 export function AllDayArch({ items, capacity = ARCH_CAPACITY }: AllDayArchProps) {
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    // An empty arch still takes its space, so the circle does not move between
+    // days with and without all-day events.
+    return (
+      <svg
+        viewBox={`0 0 100 ${VIEW_HEIGHT}`}
+        width="100%"
+        aria-hidden="true"
+        data-all-day-arch="empty"
+        style={{ display: "block" }}
+      />
+    );
+  }
   const layout = archLayout(items, capacity);
   const label = "All day: " + items.map((i) => `${i.title} (${KIND_LABEL[i.kind]})`).join(", ");
 
@@ -86,5 +100,19 @@ export function AllDayArch({ items, capacity = ARCH_CAPACITY }: AllDayArchProps)
         </g>
       )}
     </svg>
+  );
+}
+
+/**
+ * The arch above a circle: the circle is pulled up so the arch overlaps its
+ * top edge. The arch's space is kept even without events, so the circle sits
+ * at the same height on every day.
+ */
+export function CircleWithArch({ items, children }: { items: AllDayItem[]; children: ReactNode }) {
+  return (
+    <>
+      <AllDayArch items={items} />
+      <div style={{ marginTop: `-${ARCH_OVERLAP}%` }}>{children}</div>
+    </>
   );
 }

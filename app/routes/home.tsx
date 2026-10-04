@@ -23,7 +23,7 @@ import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
 import { DayAgenda } from "../components/DayAgenda";
 import { dayAgenda } from "../lib/dayAgenda";
 import { allDayForDay } from "../lib/allDay";
-import { AllDayArch, ARCH_OVERLAP } from "../components/AllDayArch";
+import { CircleWithArch } from "../components/AllDayArch";
 import { AllDayList } from "../components/AllDayList";
 import {
   settingsLink,
@@ -202,6 +202,32 @@ export default function Home() {
     label: calendarLabel(calendar.calendarId),
   }));
 
+  const circle = (
+    <MultiCircle
+      rings={rings}
+      onSliceClick={handleSliceClick}
+      className={timeline}
+      labelFontFamily={vars.font.mono}
+      hand={
+        clock?.handDegrees !== undefined
+          ? { degrees: clock.handDegrees, color: vars.color.now }
+          : undefined
+      }
+      centerLabel={
+        clock
+          ? {
+              primary: clock.primary,
+              secondary: clock.secondary,
+              color: vars.color.text,
+              secondaryColor: vars.color.textMuted,
+              haloColor: vars.color.background,
+              fontFamily: vars.font.mono,
+            }
+          : undefined
+      }
+    />
+  );
+
   return (
     <>
       <TimelineLayout
@@ -236,38 +262,13 @@ export default function Home() {
         circle={
           <>
             <div className={circleFrame}>
-              {agenda && <AllDayArch items={agenda.allDay} />}
-              <div
-                style={
-                  agenda && agenda.allDay.length > 0
-                    ? { marginTop: `-${ARCH_OVERLAP}%` }
-                    : undefined
-                }
-              >
-                <MultiCircle
-                  rings={rings}
-                  onSliceClick={handleSliceClick}
-                  className={timeline}
-                  labelFontFamily={vars.font.mono}
-                  hand={
-                    clock?.handDegrees !== undefined
-                      ? { degrees: clock.handDegrees, color: vars.color.now }
-                      : undefined
-                  }
-                  centerLabel={
-                    clock
-                      ? {
-                          primary: clock.primary,
-                          secondary: clock.secondary,
-                          color: vars.color.text,
-                          secondaryColor: vars.color.textMuted,
-                          haloColor: vars.color.background,
-                          fontFamily: vars.font.mono,
-                        }
-                      : undefined
-                  }
-                />
-              </div>
+              {/* The day view always reserves the arch's space, also before the
+                  client has mounted, so the circle never jumps. */}
+              {view === "day" ? (
+                <CircleWithArch items={agenda?.allDay ?? []}>{circle}</CircleWithArch>
+              ) : (
+                circle
+              )}
             </div>
             {noCalendars && (
               <p className={emptyState}>

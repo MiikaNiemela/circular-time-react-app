@@ -14,9 +14,13 @@ function item(title: string, kind: AllDayKind): AllDayItem {
 }
 
 describe("AllDayArch", () => {
-  it("draws nothing without all-day events", () => {
+  it("keeps its space but draws nothing, hidden, without all-day events", () => {
     const { container } = render(<AllDayArch items={[]} />);
-    expect(container.firstChild).toBeNull();
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("data-all-day-arch")).toBe("empty");
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 100 18");
+    expect(svg.childElementCount).toBe(0);
   });
 
   it("draws one icon per event with its kind, and names them all", () => {

@@ -1,6 +1,6 @@
 import { expect, within } from "storybook/test";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AllDayArch, ARCH_OVERLAP } from "./AllDayArch";
+import { CircleWithArch } from "./AllDayArch";
 import { AllDayList } from "./AllDayList";
 import { ThemeProvider } from "./ThemeProvider";
 import { MultiCircle } from "./timeline";
@@ -40,14 +40,13 @@ function Preview({ items }: { items: AllDayItem[] }) {
     <ThemeProvider>
       <div style={{ width: 420, padding: 16, background: vars.color.background }}>
         <div className={circleFrame}>
-          <AllDayArch items={items} />
-          <div style={items.length > 0 ? { marginTop: `-${ARCH_OVERLAP}%` } : undefined}>
+          <CircleWithArch items={items}>
             <MultiCircle
               rings={slicesForView("day", DAY)}
               className={timeline}
               labelFontFamily={vars.font.mono}
             />
-          </div>
+          </CircleWithArch>
         </div>
         <div style={{ marginTop: 16 }}>
           <AllDayList items={items} onSelect={() => {}} />
@@ -61,11 +60,37 @@ const meta: Meta<typeof Preview> = { title: "Timeline/AllDayArch", component: Pr
 export default meta;
 type Story = StoryObj<typeof Preview>;
 
-/** No all-day events: no arch. */
+/** No all-day events: an empty, hidden arch keeps the circle in place. */
 export const None: Story = {
   args: { items: [] },
   play: async ({ canvasElement }) => {
-    await expect(canvasElement.querySelector("[data-all-day-arch]")).toBeNull();
+    const arch = canvasElement.querySelector("[data-all-day-arch]")!;
+    await expect(arch.getAttribute("data-all-day-arch")).toBe("empty");
+    await expect(within(canvasElement).queryByRole("img")).toBeNull();
+  },
+};
+
+/**
+ * The circle sits at the same height with and without all-day events, so
+ * stepping between such days does not move it.
+ */
+export const StablePosition: Story = {
+  render: () => (
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+      <div data-testid="without">
+        <Preview items={[]} />
+      </div>
+      <div data-testid="with">
+        <Preview items={THREE} />
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const circleTop = (id: string) =>
+      canvasElement
+        .querySelector(`[data-testid="${id}"] svg:not([data-all-day-arch])`)!
+        .getBoundingClientRect().top;
+    await expect(Math.abs(circleTop("without") - circleTop("with"))).toBeLessThan(0.5);
   },
 };
 
