@@ -19,6 +19,8 @@ const HomeStub = createRoutesStub([
     loader: () => ({
       serverCalendars: [],
       failedCalendars: [],
+      // As in development without a session: sample calendars.
+      devFixture: true,
       view: "day",
       ref: formatLocalDate(new Date()),
     }),
@@ -192,6 +194,9 @@ function blankStateStories(
       const view = within(canvasElement);
       await expect(await view.findByText(text)).toBeVisible();
       if (action) await expect(view.getByRole(action.role, { name: action.name })).toBeVisible();
+      // A blank state really is blank: no event slices and no agenda rows.
+      await expect(view.queryAllByRole("button", { name: /^Ring \d+ segment/ })).toHaveLength(0);
+      await expect(view.queryByRole("list", { name: /agenda/i })).toBeNull();
     },
   });
   return { mobile: story(390), desktop: story(1280) };

@@ -74,6 +74,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     return {
       serverCalendars: [] as CalendarEventData[],
       failedCalendars: [] as FailedCalendar[],
+      // Development without a session shows sample calendars.
+      devFixture: true,
       view,
       ref,
     };
@@ -91,6 +93,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     failedCalendars: results.flatMap((result): FailedCalendar[] =>
       result.failure ? [{ calendarId: result.calendar.calendarId, reason: result.failure }] : []
     ),
+    devFixture: false,
     view,
     ref,
   };
@@ -100,6 +103,7 @@ export default function Home() {
   const {
     serverCalendars,
     failedCalendars,
+    devFixture,
     view: loaderView,
     ref: loaderRef,
   } = useLoaderData<typeof loader>();
@@ -130,8 +134,8 @@ export default function Home() {
   );
 
   const activeCalendars = useMemo(
-    () => (calendars.length === 0 ? getDevFixtureCalendars(reference, view) : calendars),
-    [calendars, reference, view]
+    () => (devFixture ? getDevFixtureCalendars(reference, view) : calendars),
+    [devFixture, calendars, reference, view]
   );
 
   const clock = now ? dayClock(view, reference, now) : null;

@@ -65,7 +65,11 @@ describe("readCalendar", () => {
       expect.objectContaining({ range: OCTOBER, events: [EVENT, LATER] })
     );
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+      },
       failure: null,
     });
   });
@@ -133,7 +137,12 @@ describe("readCalendar", () => {
     );
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+        cachedRanges: [OCTOBER],
+      },
       failure: "reconnect-required",
     });
   });
@@ -152,7 +161,7 @@ describe("readCalendar", () => {
     );
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [], fetchedRange: null },
+      calendar: { calendarId: "google", events: [], fetchedRange: null, cachedRanges: [] },
       failure: "unavailable",
     });
   });
@@ -180,7 +189,12 @@ describe("readCalendar", () => {
     const result = await readCalendar(throwingDeps, "user-1", CONNECTION, RANGE);
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+        cachedRanges: [OCTOBER],
+      },
       failure: "unavailable",
     });
   });

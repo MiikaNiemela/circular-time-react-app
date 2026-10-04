@@ -36,6 +36,23 @@ export interface BlankStateInput {
   window: TimeRange;
 }
 
+/** True when the calendar's fetched or cached ranges cover [start, end) without a gap. */
+function covers(calendar: CalendarEventData, start: number, end: number): boolean {
+  const ranges = [
+    ...(calendar.fetchedRange ? [calendar.fetchedRange] : []),
+    ...(calendar.cachedRanges ?? []),
+  ]
+    .map((r) => ({ start: new Date(r.start).getTime(), end: new Date(r.end).getTime() }))
+    .sort((a, b) => a.start - b.start);
+  let reached = start;
+  for (const r of ranges) {
+    if (r.start > reached) break;
+    reached = Math.max(reached, r.end);
+    if (reached >= end) return true;
+  }
+  return reached >= end;
+}
+
 /**
  * The state to explain, or null when there is nothing to explain. The first
  * case that applies wins:
@@ -75,8 +92,8 @@ export function blankState({
   );
   if (hasEvents) return null;
 
-  // Unavailable only explains a blank period when nothing is cached for it.
-  const uncached = new Set(visible.filter((c) => c.fetchedRange === null).map((c) => c.calendarId));
+  // Unavailable only explains a blank period that the cache does not cover.
+  const uncached = new Set(visible.filter((c) => !covers(c, start, end)).map((c) => c.calendarId));
   const unavailable = failed("unavailable").filter((id) => uncached.has(id));
   if (unavailable.length > 0) return { kind: "unavailable", calendarIds: unavailable };
 

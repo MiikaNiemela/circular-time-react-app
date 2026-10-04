@@ -23,6 +23,12 @@ export interface CalendarEventData {
   events: CalendarEvent[];
   /** Range fetched for this calendar, or null if never fetched. */
   fetchedRange: TimeRange | null;
+  /**
+   * When the read fell back to the cache: the cached months it found. Lets the
+   * page tell whether the period it shows is cached even when `fetchedRange`
+   * (the whole read) is not.
+   */
+  cachedRanges?: TimeRange[];
 }
 
 /** Outermost event ring sits just inside the inner background ring (size 200). */

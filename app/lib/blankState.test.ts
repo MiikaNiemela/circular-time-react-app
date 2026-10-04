@@ -119,4 +119,54 @@ describe("blankState", () => {
   it("says the period has no events when everything was read", () => {
     expect(blankState(input({}))).toEqual({ kind: "no-events" });
   });
+
+  describe("an unavailable provider and the cache of the shown period", () => {
+    const unavailable = [{ calendarId: "google", reason: "unavailable" as const }];
+    const month = (start: string, end: string) => ({ start, end });
+
+    it("says no events when the shown day's month is cached, even if a padding month is not", () => {
+      // Shown: 1 June. The read also asked for May, which could not be read.
+      const june1 = { start: "2026-06-01T00:00:00.000Z", end: "2026-06-02T00:00:00.000Z" };
+      const google = {
+        calendarId: "google",
+        events: [],
+        fetchedRange: null,
+        cachedRanges: [month("2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z")],
+      };
+      expect(
+        blankState(input({ visible: [google], failures: unavailable, window: june1 }))
+      ).toEqual({
+        kind: "no-events",
+      });
+    });
+
+    it("explains unavailable when the shown period spans a month that is not cached", () => {
+      const acrossMonths = { start: "2026-05-31T12:00:00.000Z", end: "2026-06-01T12:00:00.000Z" };
+      const google = {
+        calendarId: "google",
+        events: [],
+        fetchedRange: null,
+        cachedRanges: [month("2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z")],
+      };
+      expect(
+        blankState(input({ visible: [google], failures: unavailable, window: acrossMonths }))
+      ).toEqual({ kind: "unavailable", calendarIds: ["google"] });
+    });
+
+    it("treats adjacent cached months as covering a period across their boundary", () => {
+      const acrossMonths = { start: "2026-05-31T12:00:00.000Z", end: "2026-06-01T12:00:00.000Z" };
+      const google = {
+        calendarId: "google",
+        events: [],
+        fetchedRange: null,
+        cachedRanges: [
+          month("2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z"),
+          month("2026-05-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z"),
+        ],
+      };
+      expect(
+        blankState(input({ visible: [google], failures: unavailable, window: acrossMonths }))
+      ).toEqual({ kind: "no-events" });
+    });
+  });
 });

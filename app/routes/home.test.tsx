@@ -350,7 +350,7 @@ describe("Home route — server auth gate", () => {
     const request = new Request("http://localhost/");
 
     await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toEqual(
-      expect.objectContaining({ serverCalendars: [], failedCalendars: [] })
+      expect.objectContaining({ serverCalendars: [], failedCalendars: [], devFixture: true })
     );
     expect(serverMocks.readCalendarEvents).not.toHaveBeenCalled();
   });
@@ -405,6 +405,8 @@ describe("Home route — server data", () => {
     expect(result).toEqual(
       expect.objectContaining({
         failedCalendars: [{ calendarId: "outlook", reason: "reconnect-required" }],
+        // A signed-in account never gets the sample calendars.
+        devFixture: false,
       })
     );
   });

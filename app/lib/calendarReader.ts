@@ -68,6 +68,7 @@ async function cachedEvents(
     calendarId,
     events: eventsOverlapping(mergeWindows(windows), range),
     fetchedRange: allCovered ? range : null,
+    cachedRanges: windows.map((w) => w.range),
   };
 }
 
