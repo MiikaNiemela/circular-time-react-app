@@ -306,8 +306,19 @@ export const EventKindsFromProviderData: Story = {
     );
     await expect(drawn).toEqual(EXPECTED_DAY_LONG.slice(0, drawn.length).map((e) => e.kind));
     for (const name of listed) await expect(canvas.getByRole("button", { name })).toBeVisible();
+    // Timed events, partial-day time off included, are on the ring and in the
+    // agenda, and not on the arch.
     await expect(canvas.queryAllByRole("button", { name: /^Ring \d+ segment/ })).toHaveLength(
       EXPECTED_TIMED.length
     );
+    const archLabel = canvasElement
+      .querySelector("[data-all-day-arch]")!
+      .getAttribute("aria-label")!;
+    for (const title of EXPECTED_TIMED) {
+      await expect(
+        canvas.getByRole("button", { name: (name) => name.includes(title) })
+      ).toBeVisible();
+      await expect(archLabel).not.toContain(title);
+    }
   },
 };

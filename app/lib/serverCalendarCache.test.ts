@@ -91,6 +91,34 @@ describe("ServerCalendarCache", () => {
     expect(result).toEqual([classified]);
   });
 
+  it("refetches a fresh month with a timed event stored before every event had a kind, once", async () => {
+    const legacyTimed = {
+      id: "o1",
+      calendarId: "google",
+      title: "Out of office",
+      start: "2026-01-10T00:00:00.000Z",
+      end: "2026-01-11T00:00:00.000Z",
+    };
+    cacheGet.mockResolvedValue({
+      calendarId: "google",
+      range: WINDOW,
+      events: [legacyTimed],
+      fetchedAt: "2026-01-15T00:00:00Z",
+    });
+    const classified = { ...legacyTimed, kind: "time-off" as const };
+    providerFetchEvents.mockResolvedValue([classified]);
+
+    expect(await wrapper.fetchEvents(RANGE)).toEqual([classified]);
+    expect(providerFetchEvents).toHaveBeenCalledTimes(1);
+
+    // The next read is served from the classified copy the refetch stored.
+    const stored = cacheSet.mock.calls[0][2];
+    expect(stored.events).toEqual([classified]);
+    cacheGet.mockResolvedValue({ ...stored, fetchedAt: "2026-01-15T00:00:00Z" });
+    expect(await wrapper.fetchEvents(RANGE)).toEqual([classified]);
+    expect(providerFetchEvents).toHaveBeenCalledTimes(1);
+  });
+
   it("serves a fresh month whose all-day events already have a kind", async () => {
     cacheGet.mockResolvedValue({
       calendarId: "google",

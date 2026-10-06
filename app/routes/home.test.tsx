@@ -297,6 +297,8 @@ describe("Home route — local day and current time", () => {
     for (const title of EXPECTED_TIMED) {
       expect(screen.getByRole("button", { name: (name) => name.includes(title) })).toBeTruthy();
     }
+    const archLabel = document.querySelector("[data-all-day-arch]")!.getAttribute("aria-label")!;
+    for (const title of EXPECTED_TIMED) expect(archLabel).not.toContain(title);
     expect(screen.queryAllByRole("button", { name: /^Ring \d+ segment/ })).toHaveLength(
       EXPECTED_TIMED.length
     );
