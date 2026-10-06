@@ -1,8 +1,9 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect } from "react";
 import { Link, redirect } from "react-router";
 import type { Route } from "./+types/settings";
 import { isProduction } from "../lib/buildConfig";
 import { DarkModeToggle } from "../components/DarkModeToggle";
+import { OAuthStartForm } from "../components/OAuthStartForm";
 import { CalendarVisibilityStore } from "../data";
 import {
   page,
@@ -83,30 +84,6 @@ function resolveProviders(
     connectedProviders.includes(p.id)
       ? { ...p, connected: true, enabled: visibility?.isVisible(p.id) ?? true }
       : p
-  );
-}
-
-/** Starts a server-side OAuth flow: the server redirects to the provider. */
-function OAuthStartForm({
-  provider,
-  intent,
-  label,
-  children,
-  onSubmit,
-}: {
-  provider: "google" | "outlook";
-  intent: "link-identity" | "connect-calendar";
-  label: string;
-  children: ReactNode;
-  onSubmit?: () => void;
-}) {
-  return (
-    <form method="post" action={`/auth/${provider}/start`} onSubmit={onSubmit}>
-      <input type="hidden" name="intent" value={intent} />
-      <button type="submit" className={connectButton} aria-label={label}>
-        {children}
-      </button>
-    </form>
   );
 }
 
@@ -230,6 +207,7 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
                     {!linked && (
                       <div className={calendarActions}>
                         <OAuthStartForm
+                          className={connectButton}
                           provider={provider.id}
                           intent="link-identity"
                           label={`Link ${provider.name} account`}
@@ -281,6 +259,7 @@ export default function Settings({ loaderData }: Partial<Route.ComponentProps> =
                   </>
                 ) : provider.id === "google" || provider.id === "outlook" ? (
                   <OAuthStartForm
+                    className={connectButton}
                     provider={provider.id}
                     intent="connect-calendar"
                     label={`Connect ${provider.name}`}

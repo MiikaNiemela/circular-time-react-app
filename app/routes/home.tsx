@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
 import { useState, useMemo } from "react";
-import { Link, redirect, useLoaderData, useSearchParams } from "react-router";
+import { Link, redirect, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { MultiCircle } from "../components/timeline";
 import { SegmentedControl, type TimeView } from "../components/SegmentedControl";
 import { PeriodNavigator } from "../components/PeriodNavigator";
@@ -18,6 +18,8 @@ import { useNow } from "../lib/useNow";
 import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
+import { blankState, type FailedCalendar } from "../lib/blankState";
+import { BlankStateMessage } from "../components/BlankStateMessage";
 import { TimelineLayout } from "../components/TimelineLayout";
 import { CalendarLegend, calendarLabel } from "../components/CalendarLegend";
 import { DayAgenda } from "../components/DayAgenda";
@@ -25,14 +27,7 @@ import { dayAgenda } from "../lib/dayAgenda";
 import { allDayForDay } from "../lib/allDay";
 import { CircleWithArch } from "../components/AllDayArch";
 import { AllDayList } from "../components/AllDayList";
-import {
-  settingsLink,
-  circleFrame,
-  timeline,
-  emptyState,
-  emptyStateLink,
-  timeLapseToggle,
-} from "./home.css";
+import { settingsLink, circleFrame, timeline, timeLapseToggle } from "./home.css";
 
 export function meta() {
   return [
@@ -78,7 +73,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (isProduction()) throw redirect("/sign-in");
     return {
       serverCalendars: [] as CalendarEventData[],
-      failedCalendars: [] as string[],
+      failedCalendars: [] as FailedCalendar[],
+      // Development without a session shows sample calendars.
+      devFixture: true,
       view,
       ref,
     };
@@ -93,7 +90,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   );
   return {
     serverCalendars: results.map((result) => result.calendar),
-    failedCalendars: results.filter((result) => result.failed).map((r) => r.calendar.calendarId),
+    failedCalendars: results.flatMap((result): FailedCalendar[] =>
+      result.failure ? [{ calendarId: result.calendar.calendarId, reason: result.failure }] : []
+    ),
+    devFixture: false,
     view,
     ref,
   };
@@ -103,6 +103,7 @@ export default function Home() {
   const {
     serverCalendars,
     failedCalendars,
+    devFixture,
     view: loaderView,
     ref: loaderRef,
   } = useLoaderData<typeof loader>();
@@ -133,10 +134,9 @@ export default function Home() {
   );
 
   const activeCalendars = useMemo(
-    () => (calendars.length === 0 ? getDevFixtureCalendars(reference, view) : calendars),
-    [calendars, reference, view]
+    () => (devFixture ? getDevFixtureCalendars(reference, view) : calendars),
+    [devFixture, calendars, reference, view]
   );
-  const noCalendars = activeCalendars.length === 0;
 
   const clock = now ? dayClock(view, reference, now) : null;
 
@@ -196,6 +196,22 @@ export default function Home() {
       items: dayAgenda(events, day, isToday ? now : null),
     };
   }, [view, now, reference, activeCalendars]);
+
+  // Like the agenda, the explanation depends on the browser's day and on
+  // calendars hidden in this browser, so it is built after mount.
+  const blank = useMemo(
+    () =>
+      now
+        ? blankState({
+            connectedCount: serverCalendars.length,
+            visible: calendars,
+            failures: failedCalendars,
+            window: eventWindow(view, reference),
+          })
+        : null,
+    [now, serverCalendars.length, calendars, failedCalendars, view, reference]
+  );
+  const revalidator = useRevalidator();
 
   const legendItems = activeCalendars.map((calendar) => ({
     id: calendar.calendarId,
@@ -270,22 +286,12 @@ export default function Home() {
                 circle
               )}
             </div>
-            {noCalendars && (
-              <p className={emptyState}>
-                No calendars connected.{" "}
-                <Link to="/settings" className={emptyStateLink}>
-                  Open Settings
-                </Link>{" "}
-                to add one.
-              </p>
-            )}
-            {failedCalendars.length > 0 && (
-              <p className={emptyState}>
-                Calendar sync failed.{" "}
-                <Link to="/settings" className={emptyStateLink}>
-                  Reconnect in Settings
-                </Link>
-              </p>
+            {blank && (
+              <BlankStateMessage
+                state={blank}
+                calendarName={calendarLabel}
+                onRetry={() => revalidator.revalidate()}
+              />
             )}
           </>
         }

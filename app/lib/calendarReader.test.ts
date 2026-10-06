@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { readCalendar, type CalendarReaderDeps } from "./calendarReader";
+import { ReconnectRequiredError } from "./calendarCredentials";
+import { ProviderHttpError } from "../data/providerErrors";
+import { failureReason, readCalendar, type CalendarReaderDeps } from "./calendarReader";
 import type { ServerEventCache } from "./serverEventCache";
 import type { CalendarProvider } from "../data/types";
 
@@ -63,8 +65,12 @@ describe("readCalendar", () => {
       expect.objectContaining({ range: OCTOBER, events: [EVENT, LATER] })
     );
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
-      failed: false,
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+      },
+      failure: null,
     });
   });
 
@@ -93,7 +99,7 @@ describe("readCalendar", () => {
 
     expect(fetchEvents).not.toHaveBeenCalled();
     expect(result.calendar.events).toEqual([SEPT_EVENT]);
-    expect(result.failed).toBe(false);
+    expect(result.failure).toBeNull();
   });
 
   it("serves a near-future month fetched within the freshness period from the cache", async () => {
@@ -118,7 +124,9 @@ describe("readCalendar", () => {
       [`google:${OCTOBER.start}`]: { events: [EVENT], fetchedAt: "2026-10-01T00:00:00.000Z" },
     });
     const fetchEvents = vi.fn(async () => {
-      throw new Error("Calendar access was revoked or expired; reconnect required");
+      throw new ReconnectRequiredError(
+        "Calendar access was revoked or expired; reconnect required"
+      );
     });
 
     const result = await readCalendar(
@@ -129,8 +137,13 @@ describe("readCalendar", () => {
     );
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
-      failed: true,
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+        cachedRanges: [OCTOBER],
+      },
+      failure: "reconnect-required",
     });
   });
 
@@ -148,8 +161,8 @@ describe("readCalendar", () => {
     );
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [], fetchedRange: null },
-      failed: true,
+      calendar: { calendarId: "google", events: [], fetchedRange: null, cachedRanges: [] },
+      failure: "unavailable",
     });
   });
 
@@ -158,7 +171,7 @@ describe("readCalendar", () => {
 
     const result = await readCalendar(deps(cache, null), "user-1", CONNECTION, RANGE);
 
-    expect(result.failed).toBe(true);
+    expect(result.failure).toBe("unavailable");
   });
 
   it("falls back to the cache when building the provider throws", async () => {
@@ -176,8 +189,13 @@ describe("readCalendar", () => {
     const result = await readCalendar(throwingDeps, "user-1", CONNECTION, RANGE);
 
     expect(result).toEqual({
-      calendar: { calendarId: "google", events: [EVENT], fetchedRange: RANGE },
-      failed: true,
+      calendar: {
+        calendarId: "google",
+        events: [EVENT],
+        fetchedRange: RANGE,
+        cachedRanges: [OCTOBER],
+      },
+      failure: "unavailable",
     });
   });
 
@@ -211,7 +229,7 @@ describe("readCalendar", () => {
 
       const result = await readCalendar(deps(cache, failing), "user-1", CONNECTION, BOUNDARY_RANGE);
 
-      expect(result.failed).toBe(true);
+      expect(result.failure).toBe("unavailable");
       expect(result.calendar.events).toEqual([span("New")]);
     });
 
@@ -228,5 +246,22 @@ describe("readCalendar", () => {
 
       expect(result.calendar.events).toEqual([]);
     });
+  });
+});
+
+describe("failureReason", () => {
+  it.each([
+    [
+      "missing or revoked credentials",
+      new ReconnectRequiredError("reconnect required"),
+      "reconnect-required",
+    ],
+    ["a token the provider rejects", new ProviderHttpError("Google", 401), "reconnect-required"],
+    ["a provider server error", new ProviderHttpError("Outlook", 503), "unavailable"],
+    ["rate limiting after retries", new ProviderHttpError("Google", 429), "unavailable"],
+    ["a network failure", new TypeError("fetch failed"), "unavailable"],
+    ["anything else", "boom", "unavailable"],
+  ])("classifies %s", (_name, error, reason) => {
+    expect(failureReason(error)).toBe(reason);
   });
 });
