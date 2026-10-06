@@ -12,7 +12,8 @@
 
 import type { RingConfig } from "../components/timeline";
 import type { CalendarEvent, TimeRange } from "../data";
-import { eventSlicesForView } from "../data";
+import { eventSlicesForView, eventWindow } from "../data";
+import { isDayLong } from "./allDay";
 import type { TimeView } from "../components/SegmentedControl";
 
 export type { CalendarEvent };
@@ -50,11 +51,12 @@ export function eventRingsForCalendars(
   view: TimeView,
   now: Date
 ): RingConfig[] {
+  const day = eventWindow("day", now);
   return calendars.map((cal, index) => {
     const size = Math.max(MIN_RING_SIZE, FIRST_EVENT_RING_SIZE - index * RING_STEP);
     return eventSlicesForView({
-      // The day view shows all-day events on the arch instead of the ring.
-      events: view === "day" ? cal.events.filter((e) => !e.allDay) : cal.events,
+      // The day view shows day-long events on the arch instead of the ring.
+      events: view === "day" ? cal.events.filter((e) => !isDayLong(e, day)) : cal.events,
       fetchedRange: cal.fetchedRange,
       view,
       now,

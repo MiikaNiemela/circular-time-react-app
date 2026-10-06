@@ -15,13 +15,13 @@ import {
 } from "./serverRefreshPolicy";
 
 /**
- * True when a cached month was stored before all-day events carried a kind.
+ * True when a cached month was stored before every event carried a kind.
  * Such a month is refetched once, so past birthdays and time off are
  * classified too; months the policy never refreshes would otherwise keep
- * showing them as `other`.
+ * showing them unclassified.
  */
-export function lacksAllDayKinds(events: CalendarEvent[]): boolean {
-  return events.some((e) => e.allDay && e.kind === undefined);
+export function lacksKinds(events: CalendarEvent[]): boolean {
+  return events.some((e) => e.kind === undefined);
 }
 
 /**
@@ -63,7 +63,7 @@ export class ServerCalendarCache implements CalendarProvider {
       if (
         cached &&
         !shouldRefresh(window, cached.fetchedAt, this.now()) &&
-        !lacksAllDayKinds(cached.events)
+        !lacksKinds(cached.events)
       ) {
         windows.push({ ...cached, range: window, fromCache: true });
       } else {

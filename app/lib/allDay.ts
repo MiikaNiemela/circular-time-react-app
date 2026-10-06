@@ -17,19 +17,27 @@ export interface AllDayItem {
 const KIND_ORDER: Record<AllDayKind, number> = { birthday: 0, "time-off": 1, other: 2 };
 
 /**
- * The all-day events that cover any part of `day`, ordered birthdays first,
+ * Whether an event belongs on the all-day arch for `day` rather than on the
+ * ring: an all-day event touching the day, or time off covering the whole
+ * day. Google out-of-office entries are always timed, so a full day off
+ * arrives as a 00:00–24:00 timed event.
+ */
+export function isDayLong(event: CalendarEvent, day: TimeRange): boolean {
+  const start = new Date(day.start).getTime();
+  const end = new Date(day.end).getTime();
+  const interval = eventInterval(event);
+  if (event.allDay) return interval.end > start && interval.start < end;
+  return event.kind === "time-off" && interval.start <= start && interval.end >= end;
+}
+
+/**
+ * The day-long events (see `isDayLong`) of `day`, ordered birthdays first,
  * then time off, then others, each by title. An event cached before kinds
  * existed counts as `other`.
  */
 export function allDayForDay(events: CalendarEvent[], day: TimeRange): AllDayItem[] {
-  const start = new Date(day.start).getTime();
-  const end = new Date(day.end).getTime();
   return events
-    .filter((e) => e.allDay)
-    .filter((e) => {
-      const interval = eventInterval(e);
-      return interval.end > start && interval.start < end;
-    })
+    .filter((e) => isDayLong(e, day))
     .map((event) => ({
       key: `${event.calendarId}:${event.id}`,
       title: event.title,

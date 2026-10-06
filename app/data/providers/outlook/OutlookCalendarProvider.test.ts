@@ -99,7 +99,8 @@ describe("OutlookCalendarProvider", () => {
     });
     const [leave, timed] = await p.fetchEvents(RANGE);
     expect(leave.kind).toBe("time-off");
-    expect(timed).not.toHaveProperty("kind");
+    // Out-of-office is classified on timed events too; Google has no all-day out-of-office.
+    expect(timed.kind).toBe("time-off");
     const select = new URL(String(fetchFn.mock.calls[0][0])).searchParams.get("$select");
     expect(select?.split(",")).toContain("showAs");
   });

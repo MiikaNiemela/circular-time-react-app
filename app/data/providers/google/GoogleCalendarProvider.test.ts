@@ -114,7 +114,8 @@ describe("GoogleCalendarProvider", () => {
     const [birthday, leave, timed] = await p.fetchEvents(RANGE);
     expect(birthday.kind).toBe("birthday");
     expect(leave.kind).toBe("time-off");
-    expect(timed).not.toHaveProperty("kind");
+    // Out-of-office is classified on timed events too; Google has no all-day out-of-office.
+    expect(timed.kind).toBe("time-off");
   });
 
   it("titles untitled events", async () => {

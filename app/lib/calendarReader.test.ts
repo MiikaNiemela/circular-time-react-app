@@ -14,6 +14,7 @@ const EVENT = {
   id: "e1",
   calendarId: "google",
   title: "Standup",
+  kind: "other" as const,
   start: "2026-10-15T09:00:00.000Z",
   end: "2026-10-15T09:15:00.000Z",
 };
@@ -208,6 +209,7 @@ describe("readCalendar", () => {
       id: "span",
       calendarId: "google",
       title,
+      kind: "other" as const,
       start: "2026-10-31T22:00:00.000Z",
       end: "2026-11-01T02:00:00.000Z",
     });

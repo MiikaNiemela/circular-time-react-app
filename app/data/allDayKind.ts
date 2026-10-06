@@ -1,11 +1,13 @@
 /**
- * Classifies all-day events from the metadata the providers already return
- * for the primary calendar. Anything not recognised is `other`.
+ * Classifies events from the metadata the providers already return for the
+ * primary calendar. Anything not recognised is `other`. Every event gets a
+ * kind: Google out-of-office entries, for example, are always timed, and a
+ * whole-day one is shown as day-long time off (see `isDayLong`).
  */
 import type { AllDayKind } from "./types";
 
 /** From a Google Calendar event's `eventType`. */
-export function googleAllDayKind(eventType: string | undefined): AllDayKind {
+export function googleEventKind(eventType: string | undefined): AllDayKind {
   switch (eventType) {
     case "birthday":
       return "birthday";
@@ -17,6 +19,6 @@ export function googleAllDayKind(eventType: string | undefined): AllDayKind {
 }
 
 /** From a Microsoft Graph event's `showAs`. */
-export function outlookAllDayKind(showAs: string | undefined): AllDayKind {
+export function outlookEventKind(showAs: string | undefined): AllDayKind {
   return showAs === "oof" ? "time-off" : "other";
 }

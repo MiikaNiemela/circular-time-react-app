@@ -34,7 +34,7 @@ export interface CalendarEvent {
   color?: string;
   /** Whether this is an all-day event. */
   allDay?: boolean;
-  /** What an all-day event is, from provider metadata. Set on all-day events only. */
+  /** What the event is, from provider metadata; drives its day-long icon. */
   kind?: AllDayKind;
 }
 

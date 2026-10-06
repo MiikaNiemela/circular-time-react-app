@@ -1,6 +1,6 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
 import { retryingFetch, type RetryOptions } from "../retryingFetch";
-import { googleAllDayKind } from "../../allDayKind";
+import { googleEventKind } from "../../allDayKind";
 import { ProviderHttpError } from "../../providerErrors";
 
 const EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
@@ -57,7 +57,7 @@ function mapEvent(api: GoogleApiEvent): CalendarEvent {
     start: new Date(start).toISOString(),
     end: new Date(end).toISOString(),
     allDay,
-    ...(allDay ? { kind: googleAllDayKind(api.eventType) } : {}),
+    kind: googleEventKind(api.eventType),
   };
 }
 
