@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRoutesStub } from "react-router";
 import Home from "./home";
 import { formatLocalDate } from "../lib/localDate";
+import { EXPECTED_DAY_LONG, EXPECTED_TIMED, eventKindCalendars } from "../lib/eventKindFixture";
 
 // Stub the settings route so the <Link to="/settings"> in the empty-state
 // prompt navigates without a full router.
@@ -260,3 +261,53 @@ export const BlankUnavailableDesktop = unavailable.desktop;
 export const BlankNoEventsMobile = noEvents.mobile;
 /** 5. Everything read, nothing scheduled (desktop). */
 export const BlankNoEventsDesktop = noEvents.desktop;
+
+const EventKindsStub = createRoutesStub([
+  {
+    path: "/",
+    Component: Home,
+    // Raw Google and Outlook responses, run through the real providers.
+    loader: async () => ({
+      serverCalendars: await eventKindCalendars(new Date()),
+      failedCalendars: [],
+      devFixture: false,
+      view: "day",
+      ref: formatLocalDate(new Date()),
+    }),
+  },
+  { path: "/settings", Component: SettingsStub },
+]);
+
+/**
+ * Calendar event data → drawn icons, end to end: birthdays, all-day and
+ * whole-day timed out-of-office, working location and ordinary all-day
+ * events from both providers, next to timed events that must stay on the
+ * ring. See `app/lib/eventKindFixture.ts`.
+ */
+export const EventKindsFromProviderData: Story = {
+  beforeEach: () => {
+    localStorage.clear();
+    return () => localStorage.clear();
+  },
+  render: () => (
+    <div style={{ width: 1280 }}>
+      <EventKindsStub initialEntries={["/"]} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const kindLabel = { birthday: "birthday", "time-off": "time off", other: "all-day event" };
+    const listed = EXPECTED_DAY_LONG.map((e) => `${e.title} (${kindLabel[e.kind]})`);
+    await expect(
+      await canvas.findByRole("img", { name: `All day: ${listed.join(", ")}` })
+    ).toBeInTheDocument();
+    const drawn = [...canvasElement.querySelectorAll("[data-all-day-arch] [data-kind]")].map((g) =>
+      g.getAttribute("data-kind")
+    );
+    await expect(drawn).toEqual(EXPECTED_DAY_LONG.slice(0, drawn.length).map((e) => e.kind));
+    for (const name of listed) await expect(canvas.getByRole("button", { name })).toBeVisible();
+    await expect(canvas.queryAllByRole("button", { name: /^Ring \d+ segment/ })).toHaveLength(
+      EXPECTED_TIMED.length
+    );
+  },
+};

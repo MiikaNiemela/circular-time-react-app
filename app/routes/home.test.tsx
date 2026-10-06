@@ -7,6 +7,7 @@ import Home, { loader, serverReadWindow } from "./home";
 import { eventWindow } from "../lib/serverRefreshPolicy";
 import type { CalendarEventData } from "../lib/calendarTimeline";
 import type { FailedCalendar } from "../lib/blankState";
+import { EXPECTED_DAY_LONG, EXPECTED_TIMED, eventKindCalendars } from "../lib/eventKindFixture";
 
 // buildConfig is mocked so tests can toggle isProduction without patching
 // import.meta.env (vitest compiles PROD to a constant that can't be reassigned).
@@ -272,6 +273,34 @@ describe("Home route — local day and current time", () => {
     expect(screen.queryByRole("button", { name: /Ring 1 segment/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Mara's birthday (birthday)" }));
     expect(screen.getByRole("dialog", { name: "Mara's birthday" })).toBeTruthy();
+  });
+
+  it("draws the icon each provider event should get, from raw calendar data", async () => {
+    at("Europe/Helsinki", "2026-06-23T05:00:00Z");
+    const day = new Date(2026, 5, 23);
+    const HomeStub = makeStub({ ...withRing(), serverCalendars: await eventKindCalendars(day) });
+    render(<HomeStub initialEntries={["/?ref=2026-06-23"]} />);
+
+    const kindLabel = { birthday: "birthday", "time-off": "time off", other: "all-day event" };
+    const listed = EXPECTED_DAY_LONG.map((e) => `${e.title} (${kindLabel[e.kind]})`);
+    // The arch names every day-long event with its kind, in order.
+    expect(await screen.findByRole("img", { name: `All day: ${listed.join(", ")}` })).toBeTruthy();
+    // Its drawn icons carry those kinds (the rest are behind "+N").
+    const drawn = [...document.querySelectorAll("[data-all-day-arch] [data-kind]")].map((g) =>
+      g.getAttribute("data-kind")
+    );
+    expect(drawn).toEqual(EXPECTED_DAY_LONG.slice(0, drawn.length).map((e) => e.kind));
+    // Every one is a chip.
+    for (const name of listed) expect(screen.getByRole("button", { name })).toBeTruthy();
+    // Timed events, partial-day time off included, stay on the ring and in the agenda;
+    // day-long ones are on neither.
+    for (const title of EXPECTED_TIMED) {
+      expect(screen.getByRole("button", { name: (name) => name.includes(title) })).toBeTruthy();
+    }
+    expect(screen.queryAllByRole("button", { name: /^Ring \d+ segment/ })).toHaveLength(
+      EXPECTED_TIMED.length
+    );
+    expect(screen.queryByRole("button", { name: /^\d\d:\d\d.*Out of office$/ })).toBeNull();
   });
 
   it("steps to the next local day", async () => {

@@ -4,6 +4,7 @@
  */
 import type { CalendarEvent, TimeRange } from "../data/types";
 import { EVENT_COLORS } from "../data/eventSlices";
+import { isDayLong } from "./allDay";
 
 /** One row of the day agenda. */
 export interface AgendaItem {
@@ -45,7 +46,7 @@ export function dayAgenda(
   });
 
   const rows = events
-    .filter((e) => !e.allDay)
+    .filter((e) => !e.allDay && !isDayLong(e, day))
     .map((event) => ({
       event,
       key: `${event.calendarId}:${event.id}`,

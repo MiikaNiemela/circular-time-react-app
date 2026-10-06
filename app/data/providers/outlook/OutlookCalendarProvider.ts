@@ -1,6 +1,6 @@
 import type { CalendarEvent, CalendarProvider, TimeRange } from "../../types";
 import { retryingFetch, type RetryOptions } from "../retryingFetch";
-import { outlookAllDayKind } from "../../allDayKind";
+import { outlookEventKind } from "../../allDayKind";
 import { ProviderHttpError } from "../../providerErrors";
 
 /**
@@ -43,7 +43,7 @@ function mapEvent(api: GraphEvent): CalendarEvent {
     start: new Date(api.start.dateTime + "Z").toISOString(),
     end: new Date(api.end.dateTime + "Z").toISOString(),
     allDay: api.isAllDay ?? false,
-    ...(api.isAllDay ? { kind: outlookAllDayKind(api.showAs) } : {}),
+    kind: outlookEventKind(api.showAs),
   };
 }
 

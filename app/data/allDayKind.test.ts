@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { googleAllDayKind, outlookAllDayKind } from "./allDayKind";
+import { googleEventKind, outlookEventKind } from "./allDayKind";
 
-describe("googleAllDayKind", () => {
+describe("googleEventKind", () => {
   it.each([
     ["birthday", "birthday"],
     ["outOfOffice", "time-off"],
@@ -10,11 +10,11 @@ describe("googleAllDayKind", () => {
     ["workingLocation", "other"],
     [undefined, "other"],
   ])("classifies eventType %s as %s", (eventType, kind) => {
-    expect(googleAllDayKind(eventType)).toBe(kind);
+    expect(googleEventKind(eventType)).toBe(kind);
   });
 });
 
-describe("outlookAllDayKind", () => {
+describe("outlookEventKind", () => {
   it.each([
     ["oof", "time-off"],
     ["busy", "other"],
@@ -23,6 +23,6 @@ describe("outlookAllDayKind", () => {
     ["workingElsewhere", "other"],
     [undefined, "other"],
   ])("classifies showAs %s as %s", (showAs, kind) => {
-    expect(outlookAllDayKind(showAs)).toBe(kind);
+    expect(outlookEventKind(showAs)).toBe(kind);
   });
 });
