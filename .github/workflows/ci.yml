@@ -15,6 +15,18 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
     permissions:
       contents: read
+    # A disposable database for the repository tests that need real PostgreSQL.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v5
@@ -41,6 +53,14 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run --project 'unit-*'
+
+      - name: Database tests
+        env:
+          DATABASE_URL: postgresql://postgres:ci@postgres:5432/ci
+          TEST_DATABASE_URL: postgresql://postgres:ci@postgres:5432/ci
+        run: |
+          npx prisma migrate deploy
+          npm run test:db
 
       - name: Storybook component tests
         run: npx vitest run --project storybook

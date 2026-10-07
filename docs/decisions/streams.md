@@ -1,6 +1,6 @@
 # Streams
 
-Status: proposed (M13.6). Replaces "one ring per calendar" with **streams**: ordered, named, toggleable rings, each fed by one or more sources. Calendars are the only source kind for now.
+Status: accepted; step 1 (model, defaults, `POST /streams`) implemented (M13.6). Replaces "one ring per calendar" with **streams**: ordered, named, toggleable rings, each fed by one or more sources. Calendars are the only source kind for now.
 
 ## Data model
 
@@ -42,7 +42,7 @@ model StreamSource {
 
 - **No SQL backfill.** The migration only creates the tables and constraints. `ensureDefaultStreams(userId)` runs on timeline load and gives every calendar connection without a source a new stream, so connecting a calendar needs no special path.
   - **No writes when nothing is missing:** it first reads connections and sources. When every connection has a source, which is every load after the first, it returns without a transaction or write and never rewrites positions.
-  - **Losing a race is not an error:** otherwise it runs in `runSerializable`, which appends positions after the current maximum. If two first loads race, one insert fails on `calendarConnectionId @unique` (Prisma `P2002`) or a serialization conflict (`P2034`). The losing call then re-reads instead of failing, retrying up to three times, and returns the winner's streams.
+  - **Losing a race is not an error:** otherwise it runs in `runSerializable`, which appends positions after the current maximum. If two first loads race, one insert fails on `calendarConnectionId @unique` (Prisma `P2002`) or a serialization conflict (`P2034`). The losing call then re-reads instead of failing, retrying up to eight times with a short jittered back-off, and returns the winner's streams.
   - **Tests:** several connections, idempotence (a second call does no writes), a mocked `P2002` on insert that resolves to the re-read streams, and a concurrency test running two `ensureDefaultStreams` calls in parallel against the PostgreSQL used by the migration test, ending with exactly one stream per connection.
 - **Default stream:**
   - name: the static provider label (`google` → "Google Calendar", `outlook` → "Outlook", as `calendarLabel`);

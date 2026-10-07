@@ -167,9 +167,11 @@ export class PrismaUserRepository {
   async getCalendarConnections(
     userId: string
   ): Promise<Array<{ id: string; provider: string; providerUserId: string }>> {
+    // A stable order: the oldest connection is the outermost ring.
     return this.db.calendarConnection.findMany({
       where: { userId },
       select: { id: true, provider: true, providerUserId: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
   }
 

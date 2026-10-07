@@ -367,6 +367,7 @@ describe("PrismaUserRepository", () => {
       expect(calendarConnectionFindMany).toHaveBeenCalledWith({
         where: { userId: "user-uuid" },
         select: { id: true, provider: true, providerUserId: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
     });
   });

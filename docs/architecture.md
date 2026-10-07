@@ -93,7 +93,7 @@ The job needs the same runtime configuration as the server: `DATABASE_URL`, `TOK
 
 ## Styling & theming
 
-vanilla-extract provides type-safe, zero-runtime CSS, organised as a two-tier token system. Tier-1 *primitives* (`app/styles/primitives.ts`) hold the raw palette and the spacing/typography/radius scales in one place; tier-2 *semantic* tokens (`theme.css.ts`) name them by role (`background`, `text`, `accent`, …), and the light and dark themes alias primitives onto those roles. Components reference semantic tokens only — no raw values inlined. The accent has two roles: `accent` for text, links, icons and focus outlines (at least 4.5:1 on `background` and `surface`), and `accentFill` behind `onAccent` text on selected and pressed controls (at least 7:1, WCAG AAA, and at least 3:1 against `background` and `surface`, because the fill can be the only sign of a selected state). No single dark fill can meet both with white text, so the dark theme uses a light fill (`blue400`) with dark `onAccent` text. All ratios are enforced by `theme.test.ts` in light and dark. The SVG timeline scales to its container so the same component serves a phone and a wall-sized display.
+vanilla-extract provides type-safe, zero-runtime CSS, organised as a two-tier token system. Tier-1 _primitives_ (`app/styles/primitives.ts`) hold the raw palette and the spacing/typography/radius scales in one place; tier-2 _semantic_ tokens (`theme.css.ts`) name them by role (`background`, `text`, `accent`, …), and the light and dark themes alias primitives onto those roles. Components reference semantic tokens only — no raw values inlined. The accent has two roles: `accent` for text, links, icons and focus outlines (at least 4.5:1 on `background` and `surface`), and `accentFill` behind `onAccent` text on selected and pressed controls (at least 7:1, WCAG AAA, and at least 3:1 against `background` and `surface`, because the fill can be the only sign of a selected state). No single dark fill can meet both with white text, so the dark theme uses a light fill (`blue400`) with dark `onAccent` text. All ratios are enforced by `theme.test.ts` in light and dark. The SVG timeline scales to its container so the same component serves a phone and a wall-sized display.
 
 The timeline screen's layout (`app/components/TimelineLayout.tsx`) responds to the width it is given through CSS container queries (`containerWidths` in `app/styles/breakpoints.ts`), not the window, so its Storybook stories can verify the 390, 768 and 1280 px layouts directly. The DOM order is the reading order at every width. Slice labels on the rings pick black or white text by contrast with the slice colour (`readableTextColor`).
 
@@ -125,7 +125,19 @@ Google and Microsoft are registered as confidential web clients. The server star
 
 Every state-changing route checks where the request comes from (`app/lib/sameOrigin.server.ts`). `Origin` must be the app's own host; when a browser sends no `Origin`, `Referer` must be. A request with neither is refused with 403. The JSON routes also require `Content-Type: application/json` (415 otherwise), so a simple `text/plain` post from a same-site sibling origin cannot reach them. The session cookie's `SameSite=Lax` alone does not stop such a post. The gate covers calendar disconnection, sign-in identity removal, sign-out and the OAuth start routes, and every new mutation route uses it.
 
+### Streams
+
+Streams (`docs/decisions/streams.md`) are stored per account in `Stream` and `StreamSource`. The database enforces their rules:
+
+- composite foreign keys with `userId`, so a source can't cross accounts;
+- a CHECK constraint tying a source's kind to its reference;
+- a unique calendar reference, so a calendar feeds one stream.
+
+`ensureDefaultStreams` gives each calendar connection its own stream the first time it is seen, and is read-only afterwards. `POST /streams` applies one change at a time in a serializable transaction that retries a lost race. Step 1 serves streams from the loader; the timeline draws them from step 2.
+
 ## Testing strategy
+
+Repository tests that need real PostgreSQL are `*.db.test.ts` files in the `db` Vitest project (`npm run test:db`, with `TEST_DATABASE_URL` pointing at a disposable, migrated database). CI runs them against a PostgreSQL 18 service container.
 
 - **Unit tests** accompany every component and logic module (timeline math is highly testable: arc counts, `lineWidth` handling, the full-360° case, `MultiCircle` centering offsets, SVG dimensions).
 - **Storybook** is the visual workbench and the home for interaction/visual checks.

@@ -31,7 +31,18 @@ export default defineConfig({
           environment: "node",
           globals: true,
           include: ["app/**/*.test.ts", "scripts/**/*.test.mjs"],
-          exclude: [...configDefaults.exclude, ...domTestsInTs],
+          exclude: [...configDefaults.exclude, ...domTestsInTs, "app/**/*.db.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Needs TEST_DATABASE_URL pointing at a disposable, migrated database.
+          name: "db",
+          environment: "node",
+          globals: true,
+          include: ["app/**/*.db.test.ts"],
+          fileParallelism: false,
         },
       },
       {

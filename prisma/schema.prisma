@@ -18,6 +18,7 @@ model User {
   calendarConnections CalendarConnection[]
   cachedEventRanges   CachedEventRange[]
   sessions            Session[]
+  streams             Stream[]
 }
 
 // Server-side application sessions. The cookie carries an opaque random token;
@@ -57,6 +58,7 @@ model CalendarConnection {
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   cachedEventRanges CachedEventRange[]
   credential        CalendarCredential?
+  streamSources     StreamSource[]
 
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
@@ -91,4 +93,38 @@ model CalendarCredential {
   calendarConnection   CalendarConnection @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([calendarConnectionId, userId])
+}
+
+/// An ordered, named, toggleable ring on the timeline, fed by its sources.
+/// `color` is a palette key resolved by the theme, never a CSS value.
+/// `position` is dense per account: 0 is the outermost ring.
+model Stream {
+  id        String         @id @default(uuid())
+  userId    String
+  name      String
+  color     String
+  position  Int
+  visible   Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sources   StreamSource[]
+
+  @@unique([id, userId])
+  @@index([userId, position])
+}
+
+/// One input of a stream. `kind` names the source type; each kind has its
+/// own reference column, tied to it by a CHECK constraint in the migration.
+/// Both relations include `userId`, so a source cannot cross accounts, and a
+/// calendar feeds at most one stream.
+model StreamSource {
+  id                   String              @id @default(uuid())
+  userId               String
+  streamId             String
+  kind                 String
+  calendarConnectionId String?             @unique
+  stream               Stream              @relation(fields: [streamId, userId], references: [id, userId], onDelete: Cascade)
+  calendarConnection   CalendarConnection? @relation(fields: [calendarConnectionId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@index([streamId])
 }
