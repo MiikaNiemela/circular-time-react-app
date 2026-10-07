@@ -121,6 +121,10 @@ Google and Microsoft are registered as confidential web clients. The server star
 - Stored provider tokens are encrypted with AES-256-GCM under `TOKEN_ENCRYPTION_KEY`, one application-scoped key. Each ciphertext is bound to its user and calendar connection as additional authenticated data, so it cannot be decrypted in another row. Rotating the key makes stored tokens unreadable, and the affected calendars need to be reconnected.
 - The public client IDs are build configuration. Each app registration lists `<origin>/auth/<provider>/callback` as a web redirect URI, and the Microsoft registration also grants the delegated calendar, offline-access, OpenID, and profile permissions.
 
+### Request origin
+
+Every state-changing route checks where the request comes from (`app/lib/sameOrigin.server.ts`). `Origin` must be the app's own host; when a browser sends no `Origin`, `Referer` must be. A request with neither is refused with 403. The JSON routes also require `Content-Type: application/json` (415 otherwise), so a simple `text/plain` post from a same-site sibling origin cannot reach them. The session cookie's `SameSite=Lax` alone does not stop such a post. The gate covers calendar disconnection, sign-in identity removal, sign-out and the OAuth start routes, and every new mutation route uses it.
+
 ## Testing strategy
 
 - **Unit tests** accompany every component and logic module (timeline math is highly testable: arc counts, `lineWidth` handling, the full-360° case, `MultiCircle` centering offsets, SVG dimensions).

@@ -11,11 +11,12 @@ vi.mock("../lib/userRepository.server", () => ({
 }));
 
 import { action } from "./auth.calendar-disconnection";
+import { JSON_CASE, ORIGIN_CASES, SAME_ORIGIN, gateRequest } from "./mutationGate.testing";
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/auth/calendar-disconnection", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
     body: JSON.stringify(body),
   });
 }
@@ -76,5 +77,18 @@ describe("POST /auth/calendar-disconnection", () => {
     });
 
     expect(response.status).toBe(503);
+  });
+
+  it.each([...ORIGIN_CASES, JSON_CASE])("refuses $name without changing anything", async (c) => {
+    const request = gateRequest(
+      "http://localhost/auth/calendar-disconnection",
+      { "Content-Type": "application/json", Origin: SAME_ORIGIN },
+      c.headers,
+      JSON.stringify({ provider: "google" })
+    );
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const response = await action({ request, params: {}, context: {} });
+    expect(response.status).toBe(c.status);
+    expect(mocks.disconnectCalendarProvider).not.toHaveBeenCalled();
   });
 });

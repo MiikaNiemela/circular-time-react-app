@@ -11,13 +11,14 @@ vi.mock("../lib/userRepository.server", () => ({
 }));
 
 import { action } from "./auth.sign-in-identity-removal";
+import { JSON_CASE, ORIGIN_CASES, SAME_ORIGIN, gateRequest } from "./mutationGate.testing";
 
-function post(body: unknown, raw?: string) {
+function post(body: unknown, raw?: string, extraHeaders: Record<string, string> = {}) {
   // @ts-expect-error test fixture omits router-internal url and pattern fields
   return action({
     request: new Request("http://localhost/auth/sign-in-identity-removal", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: "http://localhost", ...extraHeaders },
       body: raw ?? JSON.stringify(body),
     }),
     params: {},
@@ -66,5 +67,18 @@ describe("POST /auth/sign-in-identity-removal", () => {
   it("returns 503 when the store fails", async () => {
     mocks.removeSignInIdentity.mockRejectedValue(new Error("db down"));
     expect((await post({ provider: "outlook" })).status).toBe(503);
+  });
+
+  it.each([...ORIGIN_CASES, JSON_CASE])("refuses $name without changing anything", async (c) => {
+    const request = gateRequest(
+      "http://localhost/auth/sign-in-identity-removal",
+      { "Content-Type": "application/json", Origin: SAME_ORIGIN },
+      c.headers,
+      JSON.stringify({ provider: "outlook" })
+    );
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const response = await action({ request, params: {}, context: {} });
+    expect(response.status).toBe(c.status);
+    expect(mocks.removeSignInIdentity).not.toHaveBeenCalled();
   });
 });

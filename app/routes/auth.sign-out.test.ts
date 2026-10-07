@@ -11,6 +11,7 @@ vi.mock("../lib/session.server", () => ({
 }));
 
 import { action } from "./auth.sign-out";
+import { ORIGIN_CASES, SAME_ORIGIN, gateRequest } from "./mutationGate.testing";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -22,7 +23,7 @@ describe("POST /auth/sign-out", () => {
   it("clears the signed application session and returns to sign-in", async () => {
     const request = new Request("http://localhost/auth/sign-out", {
       method: "POST",
-      headers: { Cookie: "__session=signed" },
+      headers: { Cookie: "__session=signed", Origin: "http://localhost" },
     });
 
     // @ts-expect-error test fixture omits router-internal url and pattern fields
@@ -33,5 +34,17 @@ describe("POST /auth/sign-out", () => {
     expect(mocks.getSession).toHaveBeenCalledWith("__session=signed");
     expect(mocks.destroySession).toHaveBeenCalledWith({});
     expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0");
+  });
+
+  it.each(ORIGIN_CASES)("refuses $name and keeps the session cookie", async (c) => {
+    const request = gateRequest(
+      "http://localhost/auth/sign-out",
+      { Cookie: "__session=signed", Origin: SAME_ORIGIN },
+      c.headers
+    );
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const response = await action({ request, params: {}, context: {} });
+    expect(response.status).toBe(c.status);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
   });
 });

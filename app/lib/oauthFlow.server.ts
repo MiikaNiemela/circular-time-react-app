@@ -8,6 +8,7 @@
  * confidential client secret, and completes the intent. Provider tokens stay
  * on the server; calendar credentials are stored encrypted.
  */
+import { isSameOriginRequest } from "./sameOrigin.server";
 import { createCookie, data, redirect } from "react-router";
 import {
   deriveCodeChallenge,
@@ -118,13 +119,6 @@ export function publicOrigin(request: Request): string {
   return url.origin;
 }
 
-/** Rejects cross-origin form posts that try to start a flow for the user. */
-function isSameOrigin(request: Request): boolean {
-  const origin = request.headers.get("Origin");
-  if (!origin || origin === "null") return origin === null;
-  return new URL(origin).host === new URL(request.url).host;
-}
-
 const SCOPES: Record<OAuthProviderId, Record<OAuthIntent, string>> = {
   google: {
     "sign-in": GOOGLE_IDENTITY_SCOPE,
@@ -151,7 +145,7 @@ export async function startOAuthFlow(
   request: Request,
   provider: OAuthProviderId
 ): Promise<Response> {
-  if (!isSameOrigin(request)) {
+  if (!isSameOriginRequest(request)) {
     return new Response("Cross-origin request refused", { status: 403 });
   }
   const form = await request.formData();
