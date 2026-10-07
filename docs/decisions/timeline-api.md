@@ -10,21 +10,14 @@ Resolves the open questions tracked in [issue #2](https://github.com/MiikaNiemel
 
 `Circle` and `MultiCircle` are pure presentational components. They receive pre-computed `color` and `degrees` values and have no knowledge of calendars, events, or schedules. Attaching calendar identity or event metadata to the slice model would couple the visual core to the data layer and make future extraction harder.
 
-Named schedules and event metadata belong in the mapping layer (Milestone 3.2, _Event → slice mapping_), which translates calendar events into `Slice[]` arrays before handing them to the component. The component API therefore stays:
+Named schedules and event metadata belong in the mapping layer (Milestone 3.2, *Event → slice mapping*), which translates calendar events into `Slice[]` arrays before handing them to the component. The component API therefore stays:
 
 ```ts
 // Atomic unit — color + angular span only
-interface Slice {
-  color: string;
-  degrees: number;
-}
+interface Slice { color: string; degrees: number; }
 
 // One ring in a MultiCircle
-interface RingConfig {
-  slices: Slice[];
-  lineWidth: number;
-  size: number;
-}
+interface RingConfig { slices: Slice[]; lineWidth: number; size: number; }
 ```
 
 ### 2. `onSliceClick` interactivity
@@ -51,11 +44,11 @@ When the prop is absent, no interactive attributes are added and the component i
 
 **Public surface:**
 
-| Export             | Kind      | Description                          |
-| ------------------ | --------- | ------------------------------------ |
-| `Slice`            | interface | Atomic arc segment (color + degrees) |
-| `CircleProps`      | interface | Props for `Circle`                   |
-| `Circle`           | component | Single concentric ring as SVG        |
-| `RingConfig`       | interface | One ring within a `MultiCircle`      |
-| `MultiCircleProps` | interface | Props for `MultiCircle`              |
-| `MultiCircle`      | component | Multiple concentric rings in one SVG |
+| Export          | Kind      | Description                              |
+|-----------------|-----------|------------------------------------------|
+| `Slice`         | interface | Atomic arc segment (color + degrees)     |
+| `CircleProps`   | interface | Props for `Circle`                       |
+| `Circle`        | component | Single concentric ring as SVG            |
+| `RingConfig`    | interface | One ring within a `MultiCircle`          |
+| `MultiCircleProps` | interface | Props for `MultiCircle`               |
+| `MultiCircle`   | component | Multiple concentric rings in one SVG     |
