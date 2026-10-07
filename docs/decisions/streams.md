@@ -31,6 +31,7 @@ model StreamSource {
 }
 ```
 
+- **Inverse relations.** `User` gets `streams Stream[]` and `CalendarConnection` gets `streamSources StreamSource[]`. Step 1 runs `prisma validate` on the complete schema; with these fields Prisma generates both composite foreign keys with `ON DELETE CASCADE`, including the nullable calendar reference.
 - **Account scoping is enforced by the database.** A source carries `userId`, and both foreign keys are composite with it: `(streamId, userId)` → `Stream(id, userId)`, and `(calendarConnectionId, userId)` → `CalendarConnection(id, userId)`, which already has `@@unique([id, userId])`. A source therefore can't join one account's stream to another account's calendar.
 - **The kind and its reference must match.** The migration adds a check constraint in raw SQL: `CHECK ((kind = 'calendar') = ("calendarConnectionId" IS NOT NULL))`, and `kind IN ('calendar')` until another kind exists. A future kind extends the check together with its own column, so a `calendar` source without a calendar, or a calendar reference on another kind, can't be stored.
 - **A source belongs to at most one stream** (`calendarConnectionId @unique`), so an event is never drawn twice.
@@ -39,7 +40,10 @@ model StreamSource {
 
 ## Defaults
 
-- **No SQL backfill.** The migration only creates the tables and constraints. `ensureDefaultStreams(userId)` runs on every timeline load, in the same serializable transaction that reads the streams. It gives every calendar connection without a source a new stream, so connecting a calendar needs no special path. Because this is repository code, unit tests cover several connections, idempotence and concurrency.
+- **No SQL backfill.** The migration only creates the tables and constraints. `ensureDefaultStreams(userId)` runs on timeline load and gives every calendar connection without a source a new stream, so connecting a calendar needs no special path.
+  - **No writes when nothing is missing:** it first reads connections and sources. When every connection has a source, which is every load after the first, it returns without a transaction or write and never rewrites positions.
+  - **Losing a race is not an error:** otherwise it runs in `runSerializable`, which appends positions after the current maximum. If two first loads race, one insert fails on `calendarConnectionId @unique` (Prisma `P2002`) or a serialization conflict (`P2034`). The losing call then re-reads instead of failing, retrying up to three times, and returns the winner's streams.
+  - **Tests:** several connections, idempotence (a second call does no writes), a mocked `P2002` on insert that resolves to the re-read streams, and a concurrency test running two `ensureDefaultStreams` calls in parallel against the PostgreSQL used by the migration test, ending with exactly one stream per connection.
 - **Default stream:**
   - name: the static provider label (`google` → "Google Calendar", `outlook` → "Outlook", as `calendarLabel`);
   - position: appended in `createdAt, id` order;
