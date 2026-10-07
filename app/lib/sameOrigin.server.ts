@@ -5,10 +5,37 @@
  * from closes that gap.
  */
 
-/** The request's own origin by host; the scheme is ignored behind Cloud Run's TLS proxy. */
-function sameHost(value: string, request: Request): boolean {
+/** The request's own host; the scheme is ignored behind Cloud Run's TLS proxy. */
+const requestHost = (request: Request) => new URL(request.url).host;
+
+/**
+ * True when `value` is exactly an HTTP(S) origin (scheme, host and optional
+ * port; no credentials, path, query or fragment) for the request's host.
+ */
+function isOwnOrigin(value: string, request: Request): boolean {
+  let url: URL;
   try {
-    return new URL(value).host === new URL(request.url).host;
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    (url.protocol === "https:" || url.protocol === "http:") &&
+    url.origin === value &&
+    url.host === requestHost(request)
+  );
+}
+
+/** True when a Referer URL (which normally has a path) points at the request's host over HTTP(S). */
+function isOwnReferer(value: string, request: Request): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.username === "" &&
+      url.password === "" &&
+      url.host === requestHost(request)
+    );
   } catch {
     return false;
   }
@@ -21,9 +48,9 @@ function sameHost(value: string, request: Request): boolean {
  */
 export function isSameOriginRequest(request: Request): boolean {
   const origin = request.headers.get("Origin");
-  if (origin !== null) return origin !== "null" && sameHost(origin, request);
+  if (origin !== null) return isOwnOrigin(origin, request);
   const referer = request.headers.get("Referer");
-  return referer !== null && sameHost(referer, request);
+  return referer !== null && isOwnReferer(referer, request);
 }
 
 /**

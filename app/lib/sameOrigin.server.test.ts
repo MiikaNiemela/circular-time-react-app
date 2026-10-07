@@ -12,6 +12,12 @@ describe("isSameOriginRequest", () => {
     ["a sibling subdomain", { Origin: "https://api.dev.example.com" }, false],
     ["Origin: null", { Origin: "null" }, false],
     ["a malformed Origin", { Origin: "::::" }, false],
+    ["an Origin with a path", { Origin: "https://dev.example.com/path" }, false],
+    ["an Origin with credentials", { Origin: "https://user:pw@dev.example.com" }, false],
+    ["an Origin with a trailing slash", { Origin: "https://dev.example.com/" }, false],
+    ["a non-HTTP Origin", { Origin: "ftp://dev.example.com" }, false],
+    ["a Referer with credentials", { Referer: "https://user:pw@dev.example.com/x" }, false],
+    ["a non-HTTP Referer", { Referer: "ftp://dev.example.com/x" }, false],
     ["no Origin, same-origin Referer", { Referer: "https://dev.example.com/settings" }, true],
     ["no Origin, foreign Referer", { Referer: "https://evil.example.com/" }, false],
     [
