@@ -142,8 +142,9 @@ describe.skipIf(!url)("PrismaStreamRepository on PostgreSQL", () => {
       await db.calendarConnection.create({
         data: {
           id: "c-3",
-          provider: "google",
-          providerUserId: "g3",
+          // One connection per provider per account, so a third provider.
+          provider: "ical",
+          providerUserId: "i3",
           userId: "u1",
           createdAt: new Date(3000),
         },
