@@ -139,18 +139,17 @@ describe.skipIf(!url)("PrismaStreamRepository on PostgreSQL", () => {
     });
 
     it("keeps positions dense and complete under concurrent moves", async () => {
-      await db.calendarConnection
-        .create({
-          data: {
-            id: "c-3",
-            provider: "google",
-            providerUserId: "g3",
-            userId: "u1",
-            createdAt: new Date(3000),
-          },
-        })
-        .catch(() => undefined);
+      await db.calendarConnection.create({
+        data: {
+          id: "c-3",
+          provider: "google",
+          providerUserId: "g3",
+          userId: "u1",
+          createdAt: new Date(3000),
+        },
+      });
       const streams = await repo.ensureDefaultStreams("u1");
+      expect(streams).toHaveLength(3);
       await Promise.all(
         streams.flatMap((s) => [
           repo.applyStreamChange("u1", { intent: "move", streamId: s.id, direction: "down" }),
