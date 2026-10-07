@@ -33,11 +33,15 @@ const serverMocks = vi.hoisted(() => ({
   getUserId: vi.fn(),
   getCalendarConnections: vi.fn(),
   readCalendarEvents: vi.fn(),
+  ensureDefaultStreams: vi.fn(),
 }));
 
 vi.mock("../lib/session.server", () => ({ getUserId: serverMocks.getUserId }));
 vi.mock("../lib/userRepository.server", () => ({
   userRepository: { getCalendarConnections: serverMocks.getCalendarConnections },
+}));
+vi.mock("../lib/streamRepository.server", () => ({
+  streamRepository: { ensureDefaultStreams: serverMocks.ensureDefaultStreams },
 }));
 vi.mock("../lib/calendarReader.server", () => ({
   readCalendarEvents: serverMocks.readCalendarEvents,
@@ -71,6 +75,16 @@ function makeStub(loaderData: LoaderData = DEFAULT_LOADER_DATA) {
   ]);
 }
 
+const STREAMS = [
+  {
+    id: "s1",
+    name: "Google Calendar",
+    color: "blue",
+    visible: true,
+    calendarConnectionIds: ["connection-1"],
+  },
+];
+
 const GOOGLE_EVENT = {
   id: "e1",
   calendarId: "google",
@@ -85,6 +99,7 @@ beforeEach(() => {
   mocks.useHiddenCalendars.mockReturnValue([]);
   mocks.getDevFixtureCalendars.mockReturnValue([]);
   vi.mocked(isProduction).mockReturnValue(false); // dev mode by default
+  serverMocks.ensureDefaultStreams.mockResolvedValue(STREAMS);
 });
 
 describe("Home route — rendering", () => {
@@ -381,9 +396,15 @@ describe("Home route — server auth gate", () => {
     const request = new Request("http://localhost/");
 
     await expect(loader({ request } as Parameters<typeof loader>[0])).resolves.toEqual(
-      expect.objectContaining({ serverCalendars: [], failedCalendars: [], devFixture: true })
+      expect.objectContaining({
+        serverCalendars: [],
+        failedCalendars: [],
+        streams: [],
+        devFixture: true,
+      })
     );
     expect(serverMocks.readCalendarEvents).not.toHaveBeenCalled();
+    expect(serverMocks.ensureDefaultStreams).not.toHaveBeenCalled();
   });
 });
 
@@ -436,10 +457,12 @@ describe("Home route — server data", () => {
     expect(result).toEqual(
       expect.objectContaining({
         failedCalendars: [{ calendarId: "outlook", reason: "reconnect-required" }],
+        streams: STREAMS,
         // A signed-in account never gets the sample calendars.
         devFixture: false,
       })
     );
+    expect(serverMocks.ensureDefaultStreams).toHaveBeenCalledWith("user-1");
   });
 });
 

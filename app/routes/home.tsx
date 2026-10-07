@@ -18,6 +18,7 @@ import { useNow } from "../lib/useNow";
 import { formatLocalDate, parseLocalDate } from "../lib/localDate";
 import { vars } from "../styles/theme.css";
 import type { TimeRange } from "../data/types";
+import type { Stream } from "../data/streams";
 import { blankState, type FailedCalendar } from "../lib/blankState";
 import { BlankStateMessage } from "../components/BlankStateMessage";
 import { TimelineLayout } from "../components/TimelineLayout";
@@ -74,6 +75,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return {
       serverCalendars: [] as CalendarEventData[],
       failedCalendars: [] as FailedCalendar[],
+      streams: [] as Stream[],
       // Development without a session shows sample calendars.
       devFixture: true,
       view,
@@ -83,7 +85,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const { userRepository } = await import("../lib/userRepository.server");
   const { readCalendarEvents } = await import("../lib/calendarReader.server");
-  const calendarConnections = await userRepository.getCalendarConnections(userId);
+  const { streamRepository } = await import("../lib/streamRepository.server");
+  const [calendarConnections, streams] = await Promise.all([
+    userRepository.getCalendarConnections(userId),
+    streamRepository.ensureDefaultStreams(userId),
+  ]);
   const range = serverReadWindow(view, refDate);
   const results = await Promise.all(
     calendarConnections.map((connection) => readCalendarEvents(userId, connection, range))
@@ -93,6 +99,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     failedCalendars: results.flatMap((result): FailedCalendar[] =>
       result.failure ? [{ calendarId: result.calendar.calendarId, reason: result.failure }] : []
     ),
+    // Streams are not drawn yet (M13.6 step 2); the loader already serves them.
+    streams,
     devFixture: false,
     view,
     ref,

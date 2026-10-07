@@ -24,6 +24,7 @@
     "format:check": "prettier --check app/",
     "format": "prettier --write app/",
     "test": "vitest",
+    "test:db": "vitest run --project db",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "docker:build": "docker build -t circular-time-app .",
