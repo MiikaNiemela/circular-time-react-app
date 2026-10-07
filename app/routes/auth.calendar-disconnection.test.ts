@@ -15,7 +15,7 @@ import { action } from "./auth.calendar-disconnection";
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/auth/calendar-disconnection", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
     body: JSON.stringify(body),
   });
 }
@@ -76,5 +76,17 @@ describe("POST /auth/calendar-disconnection", () => {
     });
 
     expect(response.status).toBe(503);
+  });
+
+  it("refuses a cross-origin request without changing anything", async () => {
+    const request = new Request("http://localhost/auth/calendar-disconnection", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", Origin: "https://evil.example.com" },
+      body: JSON.stringify({ provider: "google" }),
+    });
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const response = await action({ request, params: {}, context: {} });
+    expect(response.status).toBe(403);
+    expect(mocks.disconnectCalendarProvider).not.toHaveBeenCalled();
   });
 });

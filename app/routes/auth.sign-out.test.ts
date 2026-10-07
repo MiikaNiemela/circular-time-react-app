@@ -22,7 +22,7 @@ describe("POST /auth/sign-out", () => {
   it("clears the signed application session and returns to sign-in", async () => {
     const request = new Request("http://localhost/auth/sign-out", {
       method: "POST",
-      headers: { Cookie: "__session=signed" },
+      headers: { Cookie: "__session=signed", Origin: "http://localhost" },
     });
 
     // @ts-expect-error test fixture omits router-internal url and pattern fields
@@ -33,5 +33,15 @@ describe("POST /auth/sign-out", () => {
     expect(mocks.getSession).toHaveBeenCalledWith("__session=signed");
     expect(mocks.destroySession).toHaveBeenCalledWith({});
     expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0");
+  });
+
+  it("refuses a cross-origin sign-out", async () => {
+    const request = new Request("http://localhost/auth/sign-out", {
+      method: "POST",
+      headers: { Cookie: "__session=signed", Origin: "https://evil.example.com" },
+    });
+    // @ts-expect-error test fixture omits router-internal url and pattern fields
+    const response = await action({ request, params: {}, context: {} });
+    expect(response.status).toBe(403);
   });
 });

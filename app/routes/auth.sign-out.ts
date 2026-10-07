@@ -1,6 +1,7 @@
 import type { Route } from "./+types/auth.sign-out";
 import { redirect } from "react-router";
 import { getSession, destroySession } from "../lib/session.server";
+import { isSameOriginRequest } from "../lib/sameOrigin.server";
 
 /**
  * Revokes the application session on the server, clears its cookie, and
@@ -10,6 +11,10 @@ import { getSession, destroySession } from "../lib/session.server";
  * account. The 303 lets a plain HTML form POST land on the sign-in page.
  */
 export async function action({ request }: Route.ActionArgs) {
+  // A forged sign-out is a nuisance, not a takeover, but it is refused all the same.
+  if (!isSameOriginRequest(request)) {
+    return new Response("Cross-origin request refused", { status: 403 });
+  }
   const session = await getSession(request.headers.get("Cookie"));
   return redirect("/sign-in", {
     status: 303,
