@@ -42,7 +42,7 @@
     "@prisma/client": "^7.10.0",
     "@react-router/node": "^7.18.4",
     "@react-router/serve": "^7.18.4",
-    "@storybook/addon-mcp": "^10.6.1",
+    "@storybook/addon-mcp": "^10.6.2",
     "@vanilla-extract/css": "^1.21.2",
     "@vanilla-extract/vite-plugin": "^5.2.6",
     "isbot": "^5",
