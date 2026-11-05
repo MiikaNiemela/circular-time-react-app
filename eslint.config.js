@@ -1,31 +1,30 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
-import reactPlugin from "eslint-plugin-react";
+import { defineConfig } from "eslint/config";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 import prettierConfig from "eslint-config-prettier";
 import jsdoc from "eslint-plugin-jsdoc";
+import localRules from "./eslint-rules/index.js";
 
-export default tseslint.config(
+export default defineConfig(
   // Base JS recommended rules
   js.configs.recommended,
   // TypeScript rules
-  ...tseslint.configs.recommended,
-  // React and hooks rules
+  tseslint.configs.recommended,
+  // React hooks rules
   {
     plugins: {
-      react: reactPlugin,
       "react-hooks": reactHooksPlugin,
     },
     rules: {
-      ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
-      // React 17+ JSX transform — no need to import React in scope.
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
     },
-    settings: {
-      react: { version: "detect" },
-    },
+  },
+  // JSX rules TypeScript can't catch (missing keys, comment text nodes, children misuse).
+  // Replaces eslint-plugin-react; see eslint-rules/.
+  {
+    files: ["**/*.{tsx,jsx}"],
+    ...localRules.configs.recommended,
   },
   // Disable formatting rules that clash with Prettier
   prettierConfig,
