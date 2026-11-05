@@ -30,7 +30,7 @@ export default defineConfig({
           maxWorkers: 6,
           environment: "node",
           globals: true,
-          include: ["app/**/*.test.ts", "scripts/**/*.test.mjs"],
+          include: ["app/**/*.test.ts", "scripts/**/*.test.mjs", "eslint-rules/**/*.test.js"],
           exclude: [...configDefaults.exclude, ...domTestsInTs, "app/**/*.db.test.ts"],
         },
       },
