@@ -12,7 +12,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      # Keep the image version aligned with the Playwright version in package-lock.json.
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
     permissions:
       contents: read
     # A disposable database for the repository tests that need real PostgreSQL.
